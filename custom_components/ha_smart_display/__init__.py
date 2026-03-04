@@ -199,8 +199,9 @@ def _register_services(hass: HomeAssistant) -> None:
 
 
 def _parse_photo_urls(raw: str) -> list[str]:
-    """Split newline-separated URL string into a clean list."""
-    return [u.strip() for u in raw.splitlines() if u.strip()]
+    """Split comma- or newline-separated URL string into a clean list."""
+    import re
+    return [u.strip() for u in re.split(r'[,\n]+', raw) if u.strip()]
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -361,10 +362,15 @@ class DeviceConnection:
             await self.send_command({"photos": photos})
 
     async def _camera_loop(self):
-        """Push camera snapshots every 10 seconds while connected."""
+        """Push camera snapshots while connected — 10s when visible, 60s otherwise."""
         while self._ws is not None:
             await self._push_camera_snapshots()
-            await asyncio.sleep(10)
+            device_state = self._hass.data[DOMAIN].get(self._device_id, {}).get("state", {})
+            cameras_visible = (
+                device_state.get("ambient_mode") == "cameras"
+                and not device_state.get("ambient_active", False)
+            )
+            await asyncio.sleep(10 if cameras_visible else 60)
 
     async def _push_camera_snapshots(self):
         from homeassistant.components.camera import async_get_image

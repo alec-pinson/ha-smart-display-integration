@@ -31,7 +31,12 @@
       "init": {
         "title": "HA Smart Display Options",
         "data": {
-          "weather_entity": "Weather Entity"
+          "weather_entity": "Weather Entity",
+          "photo_urls": "Photo URLs",
+          "camera_entities": "Camera Entities"
+        },
+        "data_description": {
+          "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen."
         }
       }
     }
