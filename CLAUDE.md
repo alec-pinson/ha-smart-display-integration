@@ -26,6 +26,7 @@ async_setup_entry()
     → on connect: push weather + photos + timers/alarms, start camera loop
     → _listen(): handles "state" messages → dispatcher_send → entities update
                  detects focused_camera changes → starts/stops _focused_camera_loop
+                 handles "event" messages → fires ha_smart_display_notification_action HA event
     → on disconnect: set unavailable, unsubscribe weather, cancel tasks, retry with backoff
 ```
 
@@ -36,13 +37,31 @@ async_setup_entry()
 ## Adding a new service
 1. Define in `const.py` (`SERVICE_*`)
 2. Implement handler + register in `_register_services()` in `__init__.py`
-3. Add schema validation
-4. Call `conn.send_command({...})` with appropriate payload
+3. Add schema validation using `resolve_device_id()` to map HA device registry ID → internal device_id
+4. Add field definitions to `services.yaml` (use `device: {integration: ha_smart_display}` selector for device_id)
+5. Call `conn.send_command({...})` with appropriate payload
+
+## resolve_device_id()
+All service handlers call `resolve_device_id(hass, call.data["device_id"])` which looks up
+the HA device registry entry and returns the integration's internal `device_id` string.
+The `device_id` field in services.yaml uses `selector: device: {integration: ha_smart_display}`
+so users get a drop-down picker rather than having to type a raw ID.
+
+## Timer accuracy
+HA computes `remaining_seconds = max(0, int(ends_at - time.time()))` at send time and includes
+it alongside `ends_at` in the timers payload. Flutter uses `remaining_seconds` if present,
+avoiding clock drift on reconnect.
 
 ## Weather push
 - Triggered on connect + on `async_track_state_change_event` for the configured weather entity
 - Uses `weather.get_forecasts` service (hourly, falls back to daily), sends up to 24 periods
 - Sends `{"weather": {"condition", "temperature", "temperature_unit", "humidity", "wind_speed", "forecast"}}`
+
+## Notification events
+When the device fires a notification action (button press or tap_action), it sends:
+`{"type": "event", "event": "notification_action", "button": "...", "index": N}`
+`_listen()` handles this and fires the `ha_smart_display_notification_action` HA event with
+`device_id`, `button`, and `index` as event data. Tap actions use index -1.
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.
