@@ -89,14 +89,21 @@ def _register_services(hass: HomeAssistant) -> None:
         conn = get_connection(hass, device_id)
         if not conn:
             return
+        duration = call.data["duration_seconds"]
+        ends_at = int(datetime.now().timestamp()) + duration
         timer = {
             "id": call.data["timer_id"],
             "label": call.data.get("label", "Timer"),
-            "duration_seconds": call.data["duration_seconds"],
-            "ends_at": int(datetime.now().timestamp()) + call.data["duration_seconds"],
+            "duration_seconds": duration,
+            "ends_at": ends_at,
         }
         hass.data[DOMAIN][device_id]["timers"][timer["id"]] = timer
-        await conn.send_command({"timers": list(hass.data[DOMAIN][device_id]["timers"].values())})
+        now = int(datetime.now().timestamp())
+        timers_with_remaining = [
+            {**t, "remaining_seconds": max(0, t["ends_at"] - now)}
+            for t in hass.data[DOMAIN][device_id]["timers"].values()
+        ]
+        await conn.send_command({"timers": timers_with_remaining})
 
     async def handle_dismiss_timer(call: ServiceCall) -> None:
         device_id = resolve_device_id(hass, call.data["device_id"])
@@ -401,8 +408,7 @@ class DeviceConnection:
 
     async def _push_photos(self):
         photos = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
-        if photos:
-            await self.send_command({"photos": photos})
+        await self.send_command({"photos": photos})
 
     async def _camera_loop(self):
         """Push camera snapshots while connected — 10s when visible, 60s otherwise."""
@@ -446,7 +452,13 @@ class DeviceConnection:
 
     async def _push_timers_alarms(self):
         data = self._hass.data[DOMAIN].get(self._device_id, {})
-        timers = list(data.get("timers", {}).values())
+        now = int(datetime.now().timestamp())
+        # Add remaining_seconds so Flutter can compute ends_at locally,
+        # avoiding clock drift and correctly handling reconnect.
+        timers = [
+            {**t, "remaining_seconds": max(0, t["ends_at"] - now)}
+            for t in data.get("timers", {}).values()
+        ]
         alarms = list(data.get("alarms", {}).values())
         if timers or alarms:
             await self.send_command({"timers": timers, "alarms": alarms})
