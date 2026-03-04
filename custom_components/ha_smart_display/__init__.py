@@ -188,6 +188,7 @@ def _register_services(hass: HomeAssistant) -> None:
             "message": call.data.get("message", ""),
             "image_url": call.data.get("image_url"),
             "duration": call.data.get("duration", 10),
+            "buttons": call.data.get("buttons", []),
         }
         await conn.send_command({"notification": notification})
 
@@ -206,6 +207,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("message", default=""): cv.string,
             vol.Optional("image_url"): cv.string,
             vol.Optional("duration", default=10): vol.Coerce(int),
+            vol.Optional("buttons", default=[]): vol.All(cv.ensure_list, [cv.string]),
         }),
     )
 
@@ -343,6 +345,17 @@ class DeviceConnection:
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
+
+            elif msg_type == "event":
+                if msg.get("event") == "notification_action":
+                    self._hass.bus.async_fire(
+                        f"{DOMAIN}_notification_action",
+                        {
+                            "device_id": self._device_id,
+                            "button": msg.get("button"),
+                            "index": msg.get("index"),
+                        },
+                    )
 
     @callback
     def _on_weather_change(self, event) -> None:
