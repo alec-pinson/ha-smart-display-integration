@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 from datetime import datetime
@@ -16,12 +17,16 @@ from .const import (
     CONF_HOST,
     CONF_PORT,
     CONF_WEATHER_ENTITY,
+    CONF_PHOTO_URLS,
+    CONF_CAMERA_ENTITIES,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
     SERVICE_DISMISS_TIMER,
     SERVICE_SET_ALARM,
     SERVICE_DISMISS_ALARM,
+    SERVICE_SET_PHOTOS,
+    SERVICE_SEND_NOTIFICATION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +39,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
     weather_entity = entry.options.get(CONF_WEATHER_ENTITY) or entry.data.get(CONF_WEATHER_ENTITY)
+    photo_urls = _parse_photo_urls(entry.options.get(CONF_PHOTO_URLS, ""))
+    camera_entities = entry.options.get(CONF_CAMERA_ENTITIES, [])
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -41,9 +48,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "connection": None,
         "timers": {},
         "alarms": {},
+        "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -150,6 +158,50 @@ def _register_services(hass: HomeAssistant) -> None:
         }),
     )
 
+    async def handle_set_photos(call: ServiceCall) -> None:
+        device_id = call.data["device_id"]
+        urls = call.data.get("urls", [])
+        conn = get_connection(hass, device_id)
+        hass.data[DOMAIN][device_id]["photos"] = urls
+        if conn:
+            await conn.send_command({"photos": urls})
+
+    async def handle_send_notification(call: ServiceCall) -> None:
+        device_id = call.data["device_id"]
+        conn = get_connection(hass, device_id)
+        if not conn:
+            return
+        notification = {
+            "title": call.data.get("title", ""),
+            "message": call.data.get("message", ""),
+            "image_url": call.data.get("image_url"),
+            "duration": call.data.get("duration", 10),
+        }
+        await conn.send_command({"notification": notification})
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_PHOTOS, handle_set_photos,
+        schema=vol.Schema({
+            vol.Required("device_id"): cv.string,
+            vol.Required("urls"): vol.All(cv.ensure_list, [cv.string]),
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SEND_NOTIFICATION, handle_send_notification,
+        schema=vol.Schema({
+            vol.Required("device_id"): cv.string,
+            vol.Optional("title", default=""): cv.string,
+            vol.Optional("message", default=""): cv.string,
+            vol.Optional("image_url"): cv.string,
+            vol.Optional("duration", default=10): vol.Coerce(int),
+        }),
+    )
+
+
+def _parse_photo_urls(raw: str) -> list[str]:
+    """Split newline-separated URL string into a clean list."""
+    return [u.strip() for u in raw.splitlines() if u.strip()]
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_id = entry.data[CONF_DEVICE_ID]
@@ -166,17 +218,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
         self._host = host
         self._port = port
         self._weather_entity = weather_entity
+        self._camera_entities = camera_entities or []
         self._ws = None
         self._running = True
         self._reconnect_delay = 5
         self._unsub_weather = None
+        self._camera_task = None
 
     async def run(self):
         while self._running:
@@ -198,8 +252,15 @@ class DeviceConnection:
                         # Push current weather immediately
                         await self._push_weather()
 
-                    # Push current timers/alarms
+                    # Push photos and timers/alarms
+                    await self._push_photos()
                     await self._push_timers_alarms()
+
+                    # Start camera snapshot loop
+                    if self._camera_entities:
+                        self._camera_task = self._hass.async_create_task(
+                            self._camera_loop()
+                        )
 
                     await self._listen(ws)
             except (OSError, websockets.WebSocketException) as e:
@@ -213,6 +274,9 @@ class DeviceConnection:
                 if self._unsub_weather:
                     self._unsub_weather()
                     self._unsub_weather = None
+                if self._camera_task:
+                    self._camera_task.cancel()
+                    self._camera_task = None
 
             if self._running:
                 await asyncio.sleep(self._reconnect_delay)
@@ -262,15 +326,60 @@ class DeviceConnection:
             return
         attrs = state.attributes
         unit = self._hass.config.units.temperature_unit
+
+        # Fetch hourly forecast via modern HA service call
+        forecast = []
+        for forecast_type in ("hourly", "daily"):
+            try:
+                response = await self._hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": self._weather_entity, "type": forecast_type},
+                    blocking=True,
+                    return_response=True,
+                )
+                periods = response.get(self._weather_entity, {}).get("forecast", [])
+                if periods:
+                    forecast = periods[:24]
+                    break
+            except Exception as e:
+                _LOGGER.debug("ha_smart_display: forecast type %s failed: %s", forecast_type, e)
+
         weather_payload = {
             "condition": state.state,
             "temperature": attrs.get("temperature"),
             "temperature_unit": unit,
             "humidity": attrs.get("humidity"),
             "wind_speed": attrs.get("wind_speed"),
-            "forecast": attrs.get("forecast", [])[:3],  # next 3 periods
+            "forecast": forecast,
         }
         await self.send_command({"weather": weather_payload})
+
+    async def _push_photos(self):
+        photos = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
+        if photos:
+            await self.send_command({"photos": photos})
+
+    async def _camera_loop(self):
+        """Push camera snapshots every 10 seconds while connected."""
+        while self._ws is not None:
+            await self._push_camera_snapshots()
+            await asyncio.sleep(10)
+
+    async def _push_camera_snapshots(self):
+        from homeassistant.components.camera import async_get_image
+        cameras = []
+        for entity_id in self._camera_entities:
+            try:
+                image = await async_get_image(self._hass, entity_id, timeout=5)
+                b64 = base64.b64encode(image.content).decode()
+                state = self._hass.states.get(entity_id)
+                name = (state.attributes.get("friendly_name", entity_id) if state else entity_id)
+                cameras.append({"id": entity_id, "name": name, "data": b64})
+            except Exception as e:
+                _LOGGER.debug("ha_smart_display: camera snapshot failed for %s: %s", entity_id, e)
+        if cameras:
+            await self.send_command({"cameras": cameras})
 
     async def _push_timers_alarms(self):
         data = self._hass.data[DOMAIN].get(self._device_id, {})

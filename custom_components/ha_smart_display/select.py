@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import WAKE_WORD_OPTIONS
+from .const import WAKE_WORD_OPTIONS, AMBIENT_MODE_OPTIONS
 from .entity_base import HaSmartDisplayEntity
 
 
@@ -12,6 +12,7 @@ async def async_setup_entry(
 ):
     async_add_entities([
         WakeWordSelect(hass, entry),
+        AmbientModeSelect(hass, entry),
     ])
 
 
@@ -35,3 +36,21 @@ class WakeWordSelect(HaSmartDisplayEntity, SelectEntity):
         self._send_command({"wake_word": option})
 
 
+class AmbientModeSelect(HaSmartDisplayEntity, SelectEntity):
+    _attr_name = "Display Mode"
+    _attr_icon = "mdi:television-ambient-light"
+    _attr_options = AMBIENT_MODE_OPTIONS
+
+    @property
+    def entity_description_key(self):
+        return "ambient_mode"
+
+    @property
+    def current_option(self):
+        return self._current_state().get("ambient_mode", "clock")
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+    async def async_select_option(self, option: str):
+        self._send_command({"ambient_mode": option})

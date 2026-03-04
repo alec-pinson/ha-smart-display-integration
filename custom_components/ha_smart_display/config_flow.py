@@ -7,7 +7,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, DEFAULT_PORT
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, DEFAULT_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,6 +143,8 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         current_weather = self._config_entry.options.get(CONF_WEATHER_ENTITY, "")
+        current_photo_urls = self._config_entry.options.get(CONF_PHOTO_URLS, "")
+        current_cameras = self._config_entry.options.get(CONF_CAMERA_ENTITIES, [])
 
         return self.async_show_form(
             step_id="init",
@@ -150,5 +152,11 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_WEATHER_ENTITY, default=current_weather): selector.selector({
                     "entity": {"domain": "weather"}
                 }),
+                vol.Optional(CONF_PHOTO_URLS, default=current_photo_urls): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Optional(CONF_CAMERA_ENTITIES, default=current_cameras): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="camera", multiple=True)
+                ),
             }),
         )
