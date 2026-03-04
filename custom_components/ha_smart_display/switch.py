@@ -61,7 +61,7 @@ class ScreenOnSwitch(HaSmartDisplayEntity, SwitchEntity):
 
 
 class AmbientActiveSwitch(HaSmartDisplayEntity, SwitchEntity):
-    _attr_name = "Ambient Mode"
+    _attr_name = "Ambient"
     _attr_icon = "mdi:weather-night"
 
     @property
