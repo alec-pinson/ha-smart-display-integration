@@ -3,12 +3,12 @@ set_timer:
   description: Create a countdown timer on the display.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display (e.g. ha_display_5b8c68ef).
+      name: Display
+      description: The HA Smart Display to send the timer to.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     timer_id:
       name: Timer ID
       description: Unique identifier for this timer. Use the same ID to update or dismiss it.
@@ -40,12 +40,12 @@ dismiss_timer:
   description: Remove a timer from the display.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display.
+      name: Display
+      description: The HA Smart Display to dismiss the timer on.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     timer_id:
       name: Timer ID
       description: ID of the timer to dismiss.
@@ -59,12 +59,12 @@ set_alarm:
   description: Create an alarm on the display that triggers at a specific time.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display.
+      name: Display
+      description: The HA Smart Display to send the alarm to.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     alarm_id:
       name: Alarm ID
       description: Unique identifier for this alarm.
@@ -93,12 +93,12 @@ dismiss_alarm:
   description: Remove an alarm from the display.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display.
+      name: Display
+      description: The HA Smart Display to dismiss the alarm on.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     alarm_id:
       name: Alarm ID
       description: ID of the alarm to dismiss.
@@ -112,12 +112,12 @@ set_photos:
   description: Update the photo slideshow URLs on the display.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display.
+      name: Display
+      description: The HA Smart Display to update photos on.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     urls:
       name: Photo URLs
       description: List of image URLs to cycle through as a slideshow on the clock screen.
@@ -133,12 +133,12 @@ send_notification:
   description: Show a transient notification overlay on the display.
   fields:
     device_id:
-      name: Device ID
-      description: The device ID of the display.
+      name: Display
+      description: The HA Smart Display to send the notification to.
       required: true
-      example: ha_display_5b8c68ef
       selector:
-        text:
+        device:
+          integration: ha_smart_display
     title:
       name: Title
       description: Notification title shown in bold.

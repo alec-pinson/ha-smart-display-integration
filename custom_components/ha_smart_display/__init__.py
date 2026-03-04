@@ -83,7 +83,9 @@ def _register_services(hass: HomeAssistant) -> None:
         return
 
     async def handle_set_timer(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         conn = get_connection(hass, device_id)
         if not conn:
             return
@@ -97,7 +99,9 @@ def _register_services(hass: HomeAssistant) -> None:
         await conn.send_command({"timers": list(hass.data[DOMAIN][device_id]["timers"].values())})
 
     async def handle_dismiss_timer(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         timer_id = call.data["timer_id"]
         conn = get_connection(hass, device_id)
         hass.data[DOMAIN][device_id]["timers"].pop(timer_id, None)
@@ -105,7 +109,9 @@ def _register_services(hass: HomeAssistant) -> None:
             await conn.send_command({"timers": list(hass.data[DOMAIN][device_id]["timers"].values())})
 
     async def handle_set_alarm(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         conn = get_connection(hass, device_id)
         if not conn:
             return
@@ -118,7 +124,9 @@ def _register_services(hass: HomeAssistant) -> None:
         await conn.send_command({"alarms": list(hass.data[DOMAIN][device_id]["alarms"].values())})
 
     async def handle_dismiss_alarm(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         alarm_id = call.data["alarm_id"]
         conn = get_connection(hass, device_id)
         hass.data[DOMAIN][device_id]["alarms"].pop(alarm_id, None)
@@ -159,7 +167,9 @@ def _register_services(hass: HomeAssistant) -> None:
     )
 
     async def handle_set_photos(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         urls = call.data.get("urls", [])
         conn = get_connection(hass, device_id)
         hass.data[DOMAIN][device_id]["photos"] = urls
@@ -167,7 +177,9 @@ def _register_services(hass: HomeAssistant) -> None:
             await conn.send_command({"photos": urls})
 
     async def handle_send_notification(call: ServiceCall) -> None:
-        device_id = call.data["device_id"]
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
         conn = get_connection(hass, device_id)
         if not conn:
             return
@@ -459,3 +471,17 @@ class DeviceConnection:
 
 def get_connection(hass: HomeAssistant, device_id: str) -> "DeviceConnection | None":
     return hass.data.get(DOMAIN, {}).get(device_id, {}).get("connection")
+
+
+def resolve_device_id(hass: HomeAssistant, ha_device_id: str) -> str | None:
+    """Convert an HA device registry ID to our internal device_id."""
+    from homeassistant.helpers import device_registry as dr
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get(ha_device_id)
+    if not device:
+        return None
+    for entry_id in device.config_entries:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry and entry.domain == DOMAIN:
+            return entry.data.get(CONF_DEVICE_ID)
+    return None
