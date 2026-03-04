@@ -187,6 +187,13 @@ send_notification:
               value: toast
             - label: Banner (slides from top)
               value: banner
+    tap_action:
+      name: Tap Action
+      description: "Dialog only: if set, tapping the card fires ha_smart_display_notification_action with this value as the button label (index -1). Leave empty for no tap action."
+      required: false
+      example: view
+      selector:
+        text:
     buttons:
       name: Buttons
       description: Optional list of button labels. When pressed, fires a ha_smart_display_notification_action event with device_id, button label, and index. Not shown for toast style.
@@ -196,3 +203,22 @@ send_notification:
         - Dismiss
       selector:
         object:
+
+open_camera:
+  name: Open Camera
+  description: Open a live full-screen camera view on the display.
+  fields:
+    device_id:
+      name: Display
+      description: The HA Smart Display to open the camera on.
+      required: true
+      selector:
+        device:
+          integration: ha_smart_display
+    camera_entity:
+      name: Camera
+      description: The camera entity to show.
+      required: true
+      selector:
+        entity:
+          domain: camera

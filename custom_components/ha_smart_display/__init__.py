@@ -27,6 +27,7 @@ from .const import (
     SERVICE_DISMISS_ALARM,
     SERVICE_SET_PHOTOS,
     SERVICE_SEND_NOTIFICATION,
+    SERVICE_OPEN_CAMERA,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -197,6 +198,7 @@ def _register_services(hass: HomeAssistant) -> None:
             "duration": call.data.get("duration", 10),
             "buttons": call.data.get("buttons", []),
             "style": call.data.get("style", "dialog"),
+            "tap_action": call.data.get("tap_action"),
         }
         await conn.send_command({"notification": notification})
 
@@ -217,6 +219,27 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("duration", default=10): vol.Coerce(int),
             vol.Optional("buttons", default=[]): vol.All(cv.ensure_list, [cv.string]),
             vol.Optional("style", default="dialog"): vol.In(["dialog", "toast", "banner"]),
+            vol.Optional("tap_action"): cv.string,
+        }),
+    )
+
+    async def handle_open_camera(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        conn = get_connection(hass, device_id)
+        if not conn:
+            return
+        entity_id = call.data["camera_entity"]
+        state = hass.states.get(entity_id)
+        name = state.attributes.get("friendly_name", entity_id) if state else entity_id
+        await conn.send_command({"open_camera": {"id": entity_id, "name": name}})
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_OPEN_CAMERA, handle_open_camera,
+        schema=vol.Schema({
+            vol.Required("device_id"): cv.string,
+            vol.Required("camera_entity"): cv.entity_id,
         }),
     )
 
