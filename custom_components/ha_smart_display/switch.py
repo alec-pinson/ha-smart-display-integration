@@ -13,6 +13,7 @@ async def async_setup_entry(
         DoNotDisturbSwitch(hass, entry),
         ScreenOnSwitch(hass, entry),
         AmbientActiveSwitch(hass, entry),
+        AlarmSoundingSwitch(hass, entry),
     ])
 
 
@@ -80,3 +81,30 @@ class AmbientActiveSwitch(HaSmartDisplayEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._send_command({"ambient_active": False})
+
+
+class AlarmSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):
+    _attr_name = "Alarm"
+    _attr_icon = "mdi:alarm-bell"
+    _is_on: bool = False
+
+    @property
+    def entity_description_key(self):
+        return "alarm_sounding"
+
+    @property
+    def is_on(self):
+        return self._is_on
+
+    def _handle_state_update(self, payload):
+        pass  # state is driven by HA, not reported by device
+
+    async def async_turn_on(self, **kwargs):
+        self._is_on = True
+        self.async_write_ha_state()
+        self._send_command({"alarm_sounding": True})
+
+    async def async_turn_off(self, **kwargs):
+        self._is_on = False
+        self.async_write_ha_state()
+        self._send_command({"alarm_sounding": False})
