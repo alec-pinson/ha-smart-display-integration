@@ -1,0 +1,12 @@
+{
+  "domain": "ha_smart_display",
+  "name": "HA Smart Display",
+  "version": "1.0.0",
+  "documentation": "",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "zeroconf": ["_ha_smart_display._tcp.local."]
+}

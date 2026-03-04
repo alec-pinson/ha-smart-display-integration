@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA Smart Display",
+        "description": "Enter the IP address of your display device.",
+        "data": {
+          "host": "Host / IP Address",
+          "port": "Port"
+        }
+      },
+      "pairing": {
+        "title": "Pair with {device_name}",
+        "description": "Enter the 6-digit code shown on the display at {host}.",
+        "data": {
+          "pairing_code": "Pairing Code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the display. Make sure it is on the same network and the app is running.",
+      "invalid_code": "Incorrect pairing code. Check the display and try again."
+    },
+    "abort": {
+      "already_configured": "This display is already configured.",
+      "already_in_progress": "Setup is already in progress for this display."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HA Smart Display Options",
+        "data": {
+          "weather_entity": "Weather Entity"
+        }
+      }
+    }
+  }
+}
