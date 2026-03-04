@@ -1,0 +1,175 @@
+set_timer:
+  name: Set Timer
+  description: Create a countdown timer on the display.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display (e.g. ha_display_5b8c68ef).
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    timer_id:
+      name: Timer ID
+      description: Unique identifier for this timer. Use the same ID to update or dismiss it.
+      required: true
+      example: pasta_timer
+      selector:
+        text:
+    duration_seconds:
+      name: Duration (seconds)
+      description: How long the timer should run.
+      required: true
+      example: 300
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+    label:
+      name: Label
+      description: Display label shown on the timer (e.g. "Pasta").
+      required: false
+      default: Timer
+      example: Pasta
+      selector:
+        text:
+
+dismiss_timer:
+  name: Dismiss Timer
+  description: Remove a timer from the display.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display.
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    timer_id:
+      name: Timer ID
+      description: ID of the timer to dismiss.
+      required: true
+      example: pasta_timer
+      selector:
+        text:
+
+set_alarm:
+  name: Set Alarm
+  description: Create an alarm on the display that triggers at a specific time.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display.
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    alarm_id:
+      name: Alarm ID
+      description: Unique identifier for this alarm.
+      required: true
+      example: morning_alarm
+      selector:
+        text:
+    time:
+      name: Time
+      description: Time to trigger the alarm in HH:MM format.
+      required: true
+      example: "07:30"
+      selector:
+        time:
+    label:
+      name: Label
+      description: Display label shown on the alarm (e.g. "Wake up").
+      required: false
+      default: Alarm
+      example: Wake up
+      selector:
+        text:
+
+dismiss_alarm:
+  name: Dismiss Alarm
+  description: Remove an alarm from the display.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display.
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    alarm_id:
+      name: Alarm ID
+      description: ID of the alarm to dismiss.
+      required: true
+      example: morning_alarm
+      selector:
+        text:
+
+set_photos:
+  name: Set Photos
+  description: Update the photo slideshow URLs on the display.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display.
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    urls:
+      name: Photo URLs
+      description: List of image URLs to cycle through as a slideshow on the clock screen.
+      required: true
+      example:
+        - https://example.com/photo1.jpg
+        - https://example.com/photo2.jpg
+      selector:
+        object:
+
+send_notification:
+  name: Send Notification
+  description: Show a transient notification overlay on the display.
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the display.
+      required: true
+      example: ha_display_5b8c68ef
+      selector:
+        text:
+    title:
+      name: Title
+      description: Notification title shown in bold.
+      required: false
+      default: ""
+      example: Front Door
+      selector:
+        text:
+    message:
+      name: Message
+      description: Notification body text.
+      required: false
+      default: ""
+      example: Motion detected
+      selector:
+        text:
+    image_url:
+      name: Image URL
+      description: Optional URL of an image to show in the notification.
+      required: false
+      example: https://example.com/snapshot.jpg
+      selector:
+        text:
+    duration:
+      name: Duration (seconds)
+      description: How long to show the notification before auto-dismissing.
+      required: false
+      default: 10
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: seconds

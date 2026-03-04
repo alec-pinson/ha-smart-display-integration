@@ -232,6 +232,8 @@ class DeviceConnection:
         self._reconnect_delay = 5
         self._unsub_weather = None
         self._camera_task = None
+        self._focused_camera: str | None = None
+        self._fast_camera_task = None
 
     async def run(self):
         while self._running:
@@ -278,6 +280,10 @@ class DeviceConnection:
                 if self._camera_task:
                     self._camera_task.cancel()
                     self._camera_task = None
+                if self._fast_camera_task:
+                    self._fast_camera_task.cancel()
+                    self._fast_camera_task = None
+                self._focused_camera = None
 
             if self._running:
                 await asyncio.sleep(self._reconnect_delay)
@@ -310,6 +316,18 @@ class DeviceConnection:
                     self._hass.data[DOMAIN][self._device_id]["alarms"].pop(
                         payload["dismissed_alarm"], None
                     )
+                # Handle focused camera — start/stop fast snapshot loop
+                if "focused_camera" in payload:
+                    focused = payload.get("focused_camera")
+                    if focused != self._focused_camera:
+                        self._focused_camera = focused
+                        if self._fast_camera_task:
+                            self._fast_camera_task.cancel()
+                            self._fast_camera_task = None
+                        if focused and focused in self._camera_entities:
+                            self._fast_camera_task = self._hass.async_create_task(
+                                self._focused_camera_loop(focused)
+                            )
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
@@ -387,6 +405,20 @@ class DeviceConnection:
         if cameras:
             await self.send_command({"cameras": cameras})
 
+    async def _focused_camera_loop(self, entity_id: str):
+        """Push snapshots for a focused camera at ~1fps."""
+        from homeassistant.components.camera import async_get_image
+        while self._ws is not None and self._focused_camera == entity_id:
+            try:
+                image = await async_get_image(self._hass, entity_id, timeout=5)
+                b64 = base64.b64encode(image.content).decode()
+                state = self._hass.states.get(entity_id)
+                name = state.attributes.get("friendly_name", entity_id) if state else entity_id
+                await self.send_command({"focused_camera_data": {"id": entity_id, "name": name, "data": b64}})
+            except Exception as e:
+                _LOGGER.debug("ha_smart_display: focused camera snapshot failed: %s", e)
+            await asyncio.sleep(1)
+
     async def _push_timers_alarms(self):
         data = self._hass.data[DOMAIN].get(self._device_id, {})
         timers = list(data.get("timers", {}).values())
@@ -418,6 +450,9 @@ class DeviceConnection:
 
     async def stop(self):
         self._running = False
+        if self._fast_camera_task:
+            self._fast_camera_task.cancel()
+            self._fast_camera_task = None
         if self._ws:
             await self._ws.close()
 
