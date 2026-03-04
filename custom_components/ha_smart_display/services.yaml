@@ -173,9 +173,23 @@ send_notification:
           min: 1
           max: 300
           unit_of_measurement: seconds
+    style:
+      name: Style
+      description: Visual style of the notification.
+      required: false
+      default: dialog
+      selector:
+        select:
+          options:
+            - label: Dialog (modal card)
+              value: dialog
+            - label: Toast (pill at bottom)
+              value: toast
+            - label: Banner (slides from top)
+              value: banner
     buttons:
       name: Buttons
-      description: Optional list of button labels. When pressed, fires a ha_smart_display_notification_action event with device_id, button label, and index.
+      description: Optional list of button labels. When pressed, fires a ha_smart_display_notification_action event with device_id, button label, and index. Not shown for toast style.
       required: false
       example:
         - Confirm

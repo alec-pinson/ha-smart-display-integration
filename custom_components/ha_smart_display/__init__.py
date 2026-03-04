@@ -196,6 +196,7 @@ def _register_services(hass: HomeAssistant) -> None:
             "image_url": call.data.get("image_url"),
             "duration": call.data.get("duration", 10),
             "buttons": call.data.get("buttons", []),
+            "style": call.data.get("style", "dialog"),
         }
         await conn.send_command({"notification": notification})
 
@@ -215,6 +216,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("image_url"): cv.string,
             vol.Optional("duration", default=10): vol.Coerce(int),
             vol.Optional("buttons", default=[]): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional("style", default="dialog"): vol.In(["dialog", "toast", "banner"]),
         }),
     )
 
