@@ -187,6 +187,28 @@ send_notification:
               value: toast
             - label: Banner (slides from top)
               value: banner
+    position:
+      name: Position
+      description: "Dialog only: where on screen to show the card."
+      required: false
+      default: center
+      selector:
+        select:
+          options:
+            - label: Centre
+              value: center
+            - label: Top Left
+              value: top_left
+            - label: Top Centre
+              value: top_center
+            - label: Top Right
+              value: top_right
+            - label: Bottom Left
+              value: bottom_left
+            - label: Bottom Centre
+              value: bottom_center
+            - label: Bottom Right
+              value: bottom_right
     tap_action:
       name: Tap Action
       description: "Dialog only: if set, tapping the card fires ha_smart_display_notification_action with this value as the button label (index -1). Leave empty for no tap action."

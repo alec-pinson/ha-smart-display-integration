@@ -199,6 +199,7 @@ def _register_services(hass: HomeAssistant) -> None:
             "buttons": call.data.get("buttons", []),
             "style": call.data.get("style", "dialog"),
             "tap_action": call.data.get("tap_action"),
+            "position": call.data.get("position", "center"),
         }
         await conn.send_command({"notification": notification})
 
@@ -220,6 +221,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("buttons", default=[]): vol.All(cv.ensure_list, [cv.string]),
             vol.Optional("style", default="dialog"): vol.In(["dialog", "toast", "banner"]),
             vol.Optional("tap_action"): cv.string,
+            vol.Optional("position", default="center"): vol.In(["center", "top_left", "top_center", "top_right", "bottom_left", "bottom_center", "bottom_right"]),
         }),
     )
 
