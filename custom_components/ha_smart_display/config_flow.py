@@ -140,35 +140,42 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict | None = None
     ) -> config_entries.FlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # Strip empty/None values for optional entity fields so clearing them works
+            data = {k: v for k, v in user_input.items() if v not in (None, "")}
+            return self.async_create_entry(title="", data=data)
 
-        current_weather = self._config_entry.options.get(CONF_WEATHER_ENTITY, "")
-        current_photo_urls = self._config_entry.options.get(CONF_PHOTO_URLS, "")
-        current_cameras = self._config_entry.options.get(CONF_CAMERA_ENTITIES, [])
-        current_climate = self._config_entry.options.get(CONF_CLIMATE_ENTITY, "")
-        current_temp_sensor = self._config_entry.options.get(CONF_TEMPERATURE_SENSOR, "")
-        current_humidity_sensor = self._config_entry.options.get(CONF_HUMIDITY_SENSOR, "")
+        schema = vol.Schema({
+            vol.Optional(CONF_WEATHER_ENTITY): selector.selector({
+                "entity": {"domain": "weather"}
+            }),
+            vol.Optional(CONF_CLIMATE_ENTITY): selector.selector({
+                "entity": {"domain": "climate"}
+            }),
+            vol.Optional(CONF_TEMPERATURE_SENSOR): selector.selector({
+                "entity": {"device_class": "temperature"}
+            }),
+            vol.Optional(CONF_HUMIDITY_SENSOR): selector.selector({
+                "entity": {"device_class": "humidity"}
+            }),
+            vol.Optional(CONF_PHOTO_URLS): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True)
+            ),
+            vol.Optional(CONF_CAMERA_ENTITIES): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="camera", multiple=True)
+            ),
+        })
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(CONF_WEATHER_ENTITY, default=current_weather): selector.selector({
-                    "entity": {"domain": "weather"}
-                }),
-                vol.Optional(CONF_CLIMATE_ENTITY, default=current_climate): selector.selector({
-                    "entity": {"domain": "climate"}
-                }),
-                vol.Optional(CONF_TEMPERATURE_SENSOR, default=current_temp_sensor): selector.selector({
-                    "entity": {"device_class": "temperature"}
-                }),
-                vol.Optional(CONF_HUMIDITY_SENSOR, default=current_humidity_sensor): selector.selector({
-                    "entity": {"device_class": "humidity"}
-                }),
-                vol.Optional(CONF_PHOTO_URLS, default=current_photo_urls): selector.TextSelector(
-                    selector.TextSelectorConfig(multiline=True)
-                ),
-                vol.Optional(CONF_CAMERA_ENTITIES, default=current_cameras): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="camera", multiple=True)
-                ),
-            }),
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
+                {
+                    CONF_WEATHER_ENTITY: self._config_entry.options.get(CONF_WEATHER_ENTITY, ""),
+                    CONF_CLIMATE_ENTITY: self._config_entry.options.get(CONF_CLIMATE_ENTITY, ""),
+                    CONF_TEMPERATURE_SENSOR: self._config_entry.options.get(CONF_TEMPERATURE_SENSOR, ""),
+                    CONF_HUMIDITY_SENSOR: self._config_entry.options.get(CONF_HUMIDITY_SENSOR, ""),
+                    CONF_PHOTO_URLS: self._config_entry.options.get(CONF_PHOTO_URLS, ""),
+                    CONF_CAMERA_ENTITIES: self._config_entry.options.get(CONF_CAMERA_ENTITIES, []),
+                },
+            ),
         )
