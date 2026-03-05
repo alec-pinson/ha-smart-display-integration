@@ -23,10 +23,10 @@ Always use `--context pi-k8s-cluster`. Always delete the pod after copying.
 async_setup_entry()
   → DeviceConnection.run()  [background task, reconnects forever]
     → websockets.connect(ws://host:8472)
-    → on connect: push weather + photos + timers/alarms, start camera loop
+    → on connect: push weather + photos + timers/alarms + climate, start camera loop
     → _listen(): handles "state" messages → dispatcher_send → entities update
                  detects focused_camera changes → starts/stops _focused_camera_loop
-                 handles "event" messages → fires ha_smart_display_notification_action HA event
+                 handles "event" messages → notification_action HA event, climate_set_temperature/hvac_mode → climate service calls
     → on disconnect: set unavailable, unsubscribe weather, cancel tasks, retry with backoff
 ```
 
@@ -65,6 +65,19 @@ When the device fires a notification action (button press or tap_action), it sen
 `{"type": "event", "event": "notification_action", "button": "...", "index": N}`
 `_listen()` handles this and fires the `ha_smart_display_notification_action` HA event with
 `device_id`, `button`, and `index` as event data. Tap actions use index -1.
+
+## Climate push
+- Triggered on connect + `async_track_state_change_event` for climate/sensor entities (stored in `_unsub_climate`)
+- Handles three modes: climate entity only, sensors only, or both (sensors override entity readings)
+- Sensor-only mode sends `hvac_modes: []` — Flutter treats this as read-only (shows thermometer icon, hides controls)
+- `heat_cool` mode: preserves spread when setting target temp — `target_temp_high = temp + half_spread`, `target_temp_low = temp - half_spread`
+
+## Options flow pattern for optional entity fields
+Use `add_suggested_values_to_schema` — do NOT use `vol.Optional(field, default=value)`. Voluptuous substitutes the default when a user clears a field, preventing deletion. Strip empty/None on submit:
+```python
+data = {k: v for k, v in user_input.items() if v not in (None, "")}
+return self.async_create_entry(title="", data=data)
+```
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.
