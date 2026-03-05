@@ -7,6 +7,8 @@ CONF_WEATHER_ENTITY = "weather_entity"
 CONF_PHOTO_URLS = "photo_urls"
 CONF_CAMERA_ENTITIES = "camera_entities"
 CONF_CLIMATE_ENTITY = "climate_entity"
+CONF_TEMPERATURE_SENSOR = "temperature_sensor"
+CONF_HUMIDITY_SENSOR = "humidity_sensor"
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30

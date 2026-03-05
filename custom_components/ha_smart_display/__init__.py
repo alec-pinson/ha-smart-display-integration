@@ -20,6 +20,8 @@ from .const import (
     CONF_PHOTO_URLS,
     CONF_CAMERA_ENTITIES,
     CONF_CLIMATE_ENTITY,
+    CONF_TEMPERATURE_SENSOR,
+    CONF_HUMIDITY_SENSOR,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -44,6 +46,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     photo_urls = _parse_photo_urls(entry.options.get(CONF_PHOTO_URLS, ""))
     camera_entities = entry.options.get(CONF_CAMERA_ENTITIES, [])
     climate_entity = entry.options.get(CONF_CLIMATE_ENTITY) or entry.data.get(CONF_CLIMATE_ENTITY)
+    temperature_sensor = entry.options.get(CONF_TEMPERATURE_SENSOR) or None
+    humidity_sensor = entry.options.get(CONF_HUMIDITY_SENSOR) or None
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -54,7 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -269,7 +273,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -278,11 +282,14 @@ class DeviceConnection:
         self._weather_entity = weather_entity
         self._camera_entities = camera_entities or []
         self._climate_entity = climate_entity
+        self._temperature_sensor = temperature_sensor
+        self._humidity_sensor = humidity_sensor
         self._ws = None
         self._running = True
         self._reconnect_delay = 5
         self._unsub_weather = None
         self._unsub_climate = None
+        self._unsub_sensors = None
         self._camera_task = None
         self._focused_camera: str | None = None
         self._fast_camera_task = None
@@ -307,11 +314,18 @@ class DeviceConnection:
                         # Push current weather immediately
                         await self._push_weather()
 
-                    # Subscribe to climate changes
+                    # Subscribe to climate / sensor changes
+                    climate_sensor_entities = []
                     if self._climate_entity:
+                        climate_sensor_entities.append(self._climate_entity)
+                    if self._temperature_sensor:
+                        climate_sensor_entities.append(self._temperature_sensor)
+                    if self._humidity_sensor:
+                        climate_sensor_entities.append(self._humidity_sensor)
+                    if climate_sensor_entities:
                         self._unsub_climate = async_track_state_change_event(
                             self._hass,
-                            [self._climate_entity],
+                            climate_sensor_entities,
                             self._on_climate_change,
                         )
                         await self._push_climate()
@@ -455,29 +469,79 @@ class DeviceConnection:
         self._hass.async_create_task(self._push_climate())
 
     async def _push_climate(self):
-        if not self._climate_entity or not self._ws:
+        if not self._ws:
             return
-        state = self._hass.states.get(self._climate_entity)
-        if not state:
+        has_climate = bool(self._climate_entity)
+        has_sensors = bool(self._temperature_sensor or self._humidity_sensor)
+        if not has_climate and not has_sensors:
             return
-        attrs = state.attributes
-        unit = attrs.get("temperature_unit") or self._hass.config.units.temperature_unit
-        # In heat_cool mode use the midpoint of high/low as the displayed target
-        target_temp = attrs.get("temperature")
-        if state.state == "heat_cool":
-            high = attrs.get("target_temp_high")
-            low = attrs.get("target_temp_low")
-            if high is not None and low is not None:
-                target_temp = (high + low) / 2
+
+        unit = self._hass.config.units.temperature_unit
+
+        if has_climate:
+            state = self._hass.states.get(self._climate_entity)
+            if not state:
+                return
+            attrs = state.attributes
+            unit = attrs.get("temperature_unit") or unit
+            target_temp = attrs.get("temperature")
+            if state.state == "heat_cool":
+                high = attrs.get("target_temp_high")
+                low = attrs.get("target_temp_low")
+                if high is not None and low is not None:
+                    target_temp = (high + low) / 2
+            current_temp = attrs.get("current_temperature")
+            humidity = attrs.get("current_humidity")
+            name = attrs.get("friendly_name", self._climate_entity)
+            hvac_mode = state.state
+            hvac_modes = attrs.get("hvac_modes", [])
+            min_temp = attrs.get("min_temp", 7)
+            max_temp = attrs.get("max_temp", 35)
+        else:
+            # Sensor-only — read-only, no climate control
+            current_temp = None
+            humidity = None
+            name = None
+            hvac_mode = "off"
+            hvac_modes = []
+            target_temp = None
+            min_temp = 7
+            max_temp = 35
+
+        # Sensor values override climate entity's built-in readings if configured
+        if self._temperature_sensor:
+            temp_state = self._hass.states.get(self._temperature_sensor)
+            if temp_state and temp_state.state not in ("unknown", "unavailable"):
+                try:
+                    current_temp = float(temp_state.state)
+                    unit = temp_state.attributes.get("unit_of_measurement") or unit
+                    if name is None:
+                        name = temp_state.attributes.get("friendly_name", self._temperature_sensor)
+                except ValueError:
+                    pass
+
+        if self._humidity_sensor:
+            hum_state = self._hass.states.get(self._humidity_sensor)
+            if hum_state and hum_state.state not in ("unknown", "unavailable"):
+                try:
+                    humidity = int(float(hum_state.state))
+                    if name is None:
+                        name = hum_state.attributes.get("friendly_name", self._humidity_sensor)
+                except ValueError:
+                    pass
+
+        if name is None:
+            name = "Room Sensor"
+
         climate_payload = {
-            "name": attrs.get("friendly_name", self._climate_entity),
-            "current_temperature": attrs.get("current_temperature"),
-            "humidity": attrs.get("current_humidity"),
+            "name": name,
+            "current_temperature": current_temp,
+            "humidity": humidity,
             "target_temperature": target_temp,
-            "hvac_mode": state.state,
-            "hvac_modes": attrs.get("hvac_modes", []),
-            "min_temp": attrs.get("min_temp", 7),
-            "max_temp": attrs.get("max_temp", 35),
+            "hvac_mode": hvac_mode,
+            "hvac_modes": hvac_modes,
+            "min_temp": min_temp,
+            "max_temp": max_temp,
             "unit": unit,
         }
         await self.send_command({"climate": climate_payload})

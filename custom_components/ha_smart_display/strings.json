@@ -33,6 +33,8 @@
         "data": {
           "weather_entity": "Weather Entity",
           "climate_entity": "Climate Entity",
+          "temperature_sensor": "Temperature Sensor",
+          "humidity_sensor": "Humidity Sensor",
           "photo_urls": "Photo URLs",
           "camera_entities": "Camera Entities"
         },
