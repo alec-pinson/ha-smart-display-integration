@@ -38,7 +38,7 @@ async_setup_entry()
 1. Define in `const.py` (`SERVICE_*`)
 2. Implement handler + register in `_register_services()` in `__init__.py`
 3. Add schema validation using `resolve_device_id()` to map HA device registry ID → internal device_id
-4. Add field definitions to `services.yaml` (use `device: {integration: ha_smart_display}` selector for device_id)
+4. Add field definitions to `services.yaml` (use `device: {integration: ha_smart_display}` selector for device_id; use `select` selector for enum fields)
 5. Call `conn.send_command({...})` with appropriate payload
 
 ## resolve_device_id()
@@ -56,6 +56,9 @@ avoiding clock drift on reconnect.
 - Triggered on connect + on `async_track_state_change_event` for the configured weather entity
 - Uses `weather.get_forecasts` service (hourly, falls back to daily), sends up to 24 periods
 - Sends `{"weather": {"condition", "temperature", "temperature_unit", "humidity", "wind_speed", "forecast"}}`
+
+## send_notification fields
+`style`: dialog / toast / banner. `position` (dialog only): center / top_left / top_center / top_right / bottom_left / bottom_center / bottom_right — maps to `Dialog.alignment` on the Flutter side. Both validated via `vol.In` in the schema.
 
 ## Notification events
 When the device fires a notification action (button press or tap_action), it sends:
