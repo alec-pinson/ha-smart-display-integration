@@ -289,7 +289,6 @@ class DeviceConnection:
         self._reconnect_delay = 5
         self._unsub_weather = None
         self._unsub_climate = None
-        self._unsub_sensors = None
         self._camera_task = None
         self._focused_camera: str | None = None
         self._fast_camera_task = None
