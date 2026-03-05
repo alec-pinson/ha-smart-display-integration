@@ -19,6 +19,7 @@ from .const import (
     CONF_WEATHER_ENTITY,
     CONF_PHOTO_URLS,
     CONF_CAMERA_ENTITIES,
+    CONF_CLIMATE_ENTITY,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -42,6 +43,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_entity = entry.options.get(CONF_WEATHER_ENTITY) or entry.data.get(CONF_WEATHER_ENTITY)
     photo_urls = _parse_photo_urls(entry.options.get(CONF_PHOTO_URLS, ""))
     camera_entities = entry.options.get(CONF_CAMERA_ENTITIES, [])
+    climate_entity = entry.options.get(CONF_CLIMATE_ENTITY) or entry.data.get(CONF_CLIMATE_ENTITY)
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -52,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -267,7 +269,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -275,10 +277,12 @@ class DeviceConnection:
         self._port = port
         self._weather_entity = weather_entity
         self._camera_entities = camera_entities or []
+        self._climate_entity = climate_entity
         self._ws = None
         self._running = True
         self._reconnect_delay = 5
         self._unsub_weather = None
+        self._unsub_climate = None
         self._camera_task = None
         self._focused_camera: str | None = None
         self._fast_camera_task = None
@@ -303,6 +307,15 @@ class DeviceConnection:
                         # Push current weather immediately
                         await self._push_weather()
 
+                    # Subscribe to climate changes
+                    if self._climate_entity:
+                        self._unsub_climate = async_track_state_change_event(
+                            self._hass,
+                            [self._climate_entity],
+                            self._on_climate_change,
+                        )
+                        await self._push_climate()
+
                     # Push photos and timers/alarms
                     await self._push_photos()
                     await self._push_timers_alarms()
@@ -325,6 +338,9 @@ class DeviceConnection:
                 if self._unsub_weather:
                     self._unsub_weather()
                     self._unsub_weather = None
+                if self._unsub_climate:
+                    self._unsub_climate()
+                    self._unsub_climate = None
                 if self._camera_task:
                     self._camera_task.cancel()
                     self._camera_task = None
@@ -390,11 +406,51 @@ class DeviceConnection:
                             "index": msg.get("index"),
                         },
                     )
+                elif msg.get("event") == "climate_set_temperature" and self._climate_entity:
+                    temperature = msg.get("temperature")
+                    if temperature is not None:
+                        await self._hass.services.async_call(
+                            "climate", "set_temperature",
+                            {"entity_id": self._climate_entity, "temperature": temperature},
+                        )
+                elif msg.get("event") == "climate_set_hvac_mode" and self._climate_entity:
+                    hvac_mode = msg.get("hvac_mode")
+                    if hvac_mode is not None:
+                        await self._hass.services.async_call(
+                            "climate", "set_hvac_mode",
+                            {"entity_id": self._climate_entity, "hvac_mode": hvac_mode},
+                        )
 
     @callback
     def _on_weather_change(self, event) -> None:
         """Called when weather entity state changes."""
         self._hass.async_create_task(self._push_weather())
+
+    @callback
+    def _on_climate_change(self, event) -> None:
+        """Called when climate entity state changes."""
+        self._hass.async_create_task(self._push_climate())
+
+    async def _push_climate(self):
+        if not self._climate_entity or not self._ws:
+            return
+        state = self._hass.states.get(self._climate_entity)
+        if not state:
+            return
+        attrs = state.attributes
+        unit = attrs.get("temperature_unit") or self._hass.config.units.temperature_unit
+        climate_payload = {
+            "name": attrs.get("friendly_name", self._climate_entity),
+            "current_temperature": attrs.get("current_temperature"),
+            "humidity": attrs.get("current_humidity"),
+            "target_temperature": attrs.get("temperature"),
+            "hvac_mode": state.state,
+            "hvac_modes": attrs.get("hvac_modes", []),
+            "min_temp": attrs.get("min_temp", 7),
+            "max_temp": attrs.get("max_temp", 35),
+            "unit": unit,
+        }
+        await self.send_command({"climate": climate_payload})
 
     async def _push_weather(self):
         if not self._weather_entity or not self._ws:

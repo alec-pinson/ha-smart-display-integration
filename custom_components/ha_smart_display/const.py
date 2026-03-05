@@ -6,6 +6,7 @@ CONF_PORT = "port"
 CONF_WEATHER_ENTITY = "weather_entity"
 CONF_PHOTO_URLS = "photo_urls"
 CONF_CAMERA_ENTITIES = "camera_entities"
+CONF_CLIMATE_ENTITY = "climate_entity"
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30

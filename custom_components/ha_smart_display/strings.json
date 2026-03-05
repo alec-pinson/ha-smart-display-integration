@@ -32,6 +32,7 @@
         "title": "HA Smart Display Options",
         "data": {
           "weather_entity": "Weather Entity",
+          "climate_entity": "Climate Entity",
           "photo_urls": "Photo URLs",
           "camera_entities": "Camera Entities"
         },
