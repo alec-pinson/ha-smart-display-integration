@@ -409,9 +409,32 @@ class DeviceConnection:
                 elif msg.get("event") == "climate_set_temperature" and self._climate_entity:
                     temperature = msg.get("temperature")
                     if temperature is not None:
+                        climate_state = self._hass.states.get(self._climate_entity)
+                        if climate_state and climate_state.state == "heat_cool":
+                            # heat_cool mode requires target_temp_high + target_temp_low
+                            attrs = climate_state.attributes
+                            current_high = attrs.get("target_temp_high")
+                            current_low = attrs.get("target_temp_low")
+                            if current_high is not None and current_low is not None:
+                                half_spread = (current_high - current_low) / 2
+                                service_data = {
+                                    "entity_id": self._climate_entity,
+                                    "target_temp_high": temperature + half_spread,
+                                    "target_temp_low": temperature - half_spread,
+                                }
+                            else:
+                                service_data = {
+                                    "entity_id": self._climate_entity,
+                                    "target_temp_high": temperature + 1,
+                                    "target_temp_low": temperature - 1,
+                                }
+                        else:
+                            service_data = {
+                                "entity_id": self._climate_entity,
+                                "temperature": temperature,
+                            }
                         await self._hass.services.async_call(
-                            "climate", "set_temperature",
-                            {"entity_id": self._climate_entity, "temperature": temperature},
+                            "climate", "set_temperature", service_data,
                         )
                 elif msg.get("event") == "climate_set_hvac_mode" and self._climate_entity:
                     hvac_mode = msg.get("hvac_mode")
@@ -439,11 +462,18 @@ class DeviceConnection:
             return
         attrs = state.attributes
         unit = attrs.get("temperature_unit") or self._hass.config.units.temperature_unit
+        # In heat_cool mode use the midpoint of high/low as the displayed target
+        target_temp = attrs.get("temperature")
+        if state.state == "heat_cool":
+            high = attrs.get("target_temp_high")
+            low = attrs.get("target_temp_low")
+            if high is not None and low is not None:
+                target_temp = (high + low) / 2
         climate_payload = {
             "name": attrs.get("friendly_name", self._climate_entity),
             "current_temperature": attrs.get("current_temperature"),
             "humidity": attrs.get("current_humidity"),
-            "target_temperature": attrs.get("temperature"),
+            "target_temperature": target_temp,
             "hvac_mode": state.state,
             "hvac_modes": attrs.get("hvac_modes", []),
             "min_temp": attrs.get("min_temp", 7),
