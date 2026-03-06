@@ -36,10 +36,12 @@
           "temperature_sensor": "Temperature Sensor",
           "humidity_sensor": "Humidity Sensor",
           "photo_urls": "Photo URLs",
-          "camera_entities": "Camera Entities"
+          "camera_entities": "Camera Entities",
+          "auto_ambient_lux": "Auto Ambient Lux Threshold"
         },
         "data_description": {
-          "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen."
+          "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen.",
+          "auto_ambient_lux": "Switch to ambient mode when lux drops below this value. Leave blank to disable."
         }
       }
     }

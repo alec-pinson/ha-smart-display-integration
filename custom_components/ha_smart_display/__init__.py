@@ -22,6 +22,7 @@ from .const import (
     CONF_CLIMATE_ENTITY,
     CONF_TEMPERATURE_SENSOR,
     CONF_HUMIDITY_SENSOR,
+    CONF_AUTO_AMBIENT_LUX,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -48,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     climate_entity = entry.options.get(CONF_CLIMATE_ENTITY) or entry.data.get(CONF_CLIMATE_ENTITY)
     temperature_sensor = entry.options.get(CONF_TEMPERATURE_SENSOR) or None
     humidity_sensor = entry.options.get(CONF_HUMIDITY_SENSOR) or None
+    auto_ambient_lux = entry.options.get(CONF_AUTO_AMBIENT_LUX) or None
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -58,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -273,7 +275,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -284,6 +286,8 @@ class DeviceConnection:
         self._climate_entity = climate_entity
         self._temperature_sensor = temperature_sensor
         self._humidity_sensor = humidity_sensor
+        self._auto_ambient_lux = auto_ambient_lux
+        self._auto_ambient_active: bool | None = None
         self._ws = None
         self._running = True
         self._reconnect_delay = 5
@@ -348,6 +352,7 @@ class DeviceConnection:
             finally:
                 self._ws = None
                 self._set_available(False)
+                self._auto_ambient_active = None
                 if self._unsub_weather:
                     self._unsub_weather()
                     self._unsub_weather = None
@@ -393,6 +398,15 @@ class DeviceConnection:
                     self._hass.data[DOMAIN][self._device_id]["alarms"].pop(
                         payload["dismissed_alarm"], None
                     )
+                # Auto-ambient: switch ambient on/off based on lux threshold
+                if self._auto_ambient_lux is not None and "lux" in payload:
+                    lux = payload["lux"]
+                    if lux is not None:
+                        should_be_ambient = lux < self._auto_ambient_lux
+                        if should_be_ambient != self._auto_ambient_active:
+                            self._auto_ambient_active = should_be_ambient
+                            await self.send_command({"ambient_active": should_be_ambient})
+
                 # Handle focused camera — start/stop fast snapshot loop
                 if "focused_camera" in payload:
                     focused = payload.get("focused_camera")

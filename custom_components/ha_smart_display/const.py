@@ -9,6 +9,7 @@ CONF_CAMERA_ENTITIES = "camera_entities"
 CONF_CLIMATE_ENTITY = "climate_entity"
 CONF_TEMPERATURE_SENSOR = "temperature_sensor"
 CONF_HUMIDITY_SENSOR = "humidity_sensor"
+CONF_AUTO_AMBIENT_LUX = "auto_ambient_lux"
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
