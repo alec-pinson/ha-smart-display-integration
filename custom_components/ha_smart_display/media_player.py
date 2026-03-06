@@ -156,24 +156,52 @@ class HaSmartDisplayMediaPlayer(HaSmartDisplayEntity, MediaPlayerEntity):
         _LOGGER.debug("ha_smart_display: play_media url=%s type=%s", media_id, media_type)
 
         extra = kwargs.get("extra") or {}
-        duration_raw = extra.get("duration") or extra.get("duration_ms") or 0
+        _LOGGER.debug("ha_smart_display: play_media extra=%s", extra)
+        # MA nests metadata under extra["metadata"] with camelCase keys
+        meta = extra.get("metadata") or {}
+        images = meta.get("images") or []
+        title = meta.get("title") or extra.get("title") or extra.get("media_title") or ""
+        artist = meta.get("artist") or extra.get("artist") or extra.get("media_artist")
+        album = meta.get("album") or meta.get("albumName") or extra.get("album") or extra.get("media_album") or extra.get("album_name")
+        duration_raw = meta.get("duration") or extra.get("duration") or extra.get("duration_ms") or 0
         # MA sends duration in seconds; convert to ms
         duration_ms = int(duration_raw * 1000) if duration_raw < 100000 else int(duration_raw)
+        art_url = (
+            meta.get("imageUrl")
+            or (images[0].get("url") if images else None)
+            or extra.get("art_url")
+            or extra.get("image_url")
+            or extra.get("image")
+        )
+        # Resolve relative art URLs (e.g. /api/...) to absolute so the device can fetch them
+        if art_url and art_url.startswith("/"):
+            try:
+                from homeassistant.helpers.network import get_url
+                base = get_url(self.hass, allow_internal=True, prefer_external=False)
+                art_url = f"{base.rstrip('/')}{art_url}"
+            except Exception as e:
+                _LOGGER.warning("ha_smart_display: could not resolve art URL: %s", e)
+        # If an MA media player is configured, it will push the real track info via
+        # media_track command immediately after. Send empty metadata here so the device
+        # keeps the current track displayed rather than flashing a generic placeholder.
+        from . import get_connection
+        conn = get_connection(self.hass, self._device_id)
+        if conn and getattr(conn, "_ma_media_player", None):
+            title, artist, album, art_url = "", None, None, None
         payload = {
             "play_media": {
                 "url": media_id,
-                "title": extra.get("title") or extra.get("media_title") or "",
-                "artist": extra.get("artist") or extra.get("media_artist"),
-                "album": extra.get("album") or extra.get("media_album"),
-                "art_url": (
-                    extra.get("art_url")
-                    or extra.get("image_url")
-                    or extra.get("image")
-                ),
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "art_url": art_url,
                 "duration_ms": duration_ms,
             }
         }
         self._send_command(payload)
+        # Immediately push current MA track so metadata arrives in the same burst
+        if conn and getattr(conn, "_ma_media_player", None):
+            self.hass.async_create_task(conn._push_ma_track())
 
     async def async_media_pause(self) -> None:
         self._send_command({"media_command": "pause"})

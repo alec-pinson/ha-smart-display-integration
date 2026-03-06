@@ -23,6 +23,7 @@ from .const import (
     CONF_TEMPERATURE_SENSOR,
     CONF_HUMIDITY_SENSOR,
     CONF_AUTO_AMBIENT_LUX,
+    CONF_MA_MEDIA_PLAYER,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -50,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     temperature_sensor = entry.options.get(CONF_TEMPERATURE_SENSOR) or None
     humidity_sensor = entry.options.get(CONF_HUMIDITY_SENSOR) or None
     auto_ambient_lux = entry.options.get(CONF_AUTO_AMBIENT_LUX) or None
+    ma_media_player = entry.options.get(CONF_MA_MEDIA_PLAYER) or None
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -60,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -275,7 +277,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -287,12 +289,14 @@ class DeviceConnection:
         self._temperature_sensor = temperature_sensor
         self._humidity_sensor = humidity_sensor
         self._auto_ambient_lux = auto_ambient_lux
+        self._ma_media_player = ma_media_player
         self._auto_ambient_active: bool | None = None
         self._ws = None
         self._running = True
         self._reconnect_delay = 5
         self._unsub_weather = None
         self._unsub_climate = None
+        self._unsub_ma = None
         self._camera_task = None
         self._focused_camera: str | None = None
         self._fast_camera_task = None
@@ -333,6 +337,15 @@ class DeviceConnection:
                         )
                         await self._push_climate()
 
+                    # Subscribe to MA media player state changes
+                    if self._ma_media_player:
+                        self._unsub_ma = async_track_state_change_event(
+                            self._hass,
+                            [self._ma_media_player],
+                            self._on_ma_state_change,
+                        )
+                        await self._push_ma_track()
+
                     # Push photos and timers/alarms
                     await self._push_photos()
                     await self._push_timers_alarms()
@@ -359,6 +372,9 @@ class DeviceConnection:
                 if self._unsub_climate:
                     self._unsub_climate()
                     self._unsub_climate = None
+                if self._unsub_ma:
+                    self._unsub_ma()
+                    self._unsub_ma = None
                 if self._camera_task:
                     self._camera_task.cancel()
                     self._camera_task = None
@@ -442,13 +458,23 @@ class DeviceConnection:
                         },
                     )
                 elif msg.get("event") == "media_command":
+                    command = msg.get("command")
                     self._hass.bus.async_fire(
                         f"{DOMAIN}_media_command",
                         {
                             "device_id": self._device_id,
-                            "command": msg.get("command"),
+                            "command": command,
                         },
                     )
+                    # Forward next/previous to the configured MA media player
+                    if self._ma_media_player and command in ("next", "previous"):
+                        service = "media_next_track" if command == "next" else "media_previous_track"
+                        self._hass.async_create_task(
+                            self._hass.services.async_call(
+                                "media_player", service,
+                                {"entity_id": self._ma_media_player},
+                            )
+                        )
                 elif msg.get("event") == "climate_set_temperature" and self._climate_entity:
                     temperature = msg.get("temperature")
                     if temperature is not None:
@@ -496,6 +522,38 @@ class DeviceConnection:
     def _on_climate_change(self, event) -> None:
         """Called when climate entity state changes."""
         self._hass.async_create_task(self._push_climate())
+
+    @callback
+    def _on_ma_state_change(self, event) -> None:
+        """Called when the MA media player entity state changes."""
+        self._hass.async_create_task(self._push_ma_track())
+
+    async def _push_ma_track(self):
+        if not self._ws or not self._ma_media_player:
+            return
+        state = self._hass.states.get(self._ma_media_player)
+        if not state or state.state in ("unavailable", "unknown", "idle", "off"):
+            return
+        art_url = state.attributes.get("entity_picture")
+        # Resolve relative art URL to absolute so the device can fetch it
+        if art_url and art_url.startswith("/"):
+            try:
+                from homeassistant.helpers.network import get_url
+                base = get_url(self._hass, allow_internal=True, prefer_external=False)
+                art_url = f"{base.rstrip('/')}{art_url}"
+            except Exception:
+                pass
+        duration = state.attributes.get("media_duration") or 0
+        position = state.attributes.get("media_position") or 0
+        track = {
+            "title": state.attributes.get("media_title") or "",
+            "artist": state.attributes.get("media_artist"),
+            "album": state.attributes.get("media_album_name"),
+            "art_url": art_url,
+            "duration_ms": int(duration * 1000),
+            "position_ms": int(position * 1000),
+        }
+        await self.send_command({"media_track": track})
 
     async def _push_climate(self):
         if not self._ws:

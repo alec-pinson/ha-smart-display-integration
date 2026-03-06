@@ -37,7 +37,8 @@
           "humidity_sensor": "Humidity Sensor",
           "photo_urls": "Photo URLs",
           "camera_entities": "Camera Entities",
-          "auto_ambient_lux": "Auto Ambient Lux Threshold"
+          "auto_ambient_lux": "Auto Ambient Lux Threshold",
+          "ma_media_player": "Music Assistant Media Player"
         },
         "data_description": {
           "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen.",

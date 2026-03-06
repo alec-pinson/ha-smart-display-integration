@@ -24,10 +24,13 @@ async_setup_entry()
   → DeviceConnection.run()  [background task, reconnects forever]
     → websockets.connect(ws://host:8472)
     → on connect: push weather + photos + timers/alarms + climate, start camera loop
+                  subscribe to MA media player entity if configured + push current track
     → _listen(): handles "state" messages → dispatcher_send → entities update
                  detects focused_camera changes → starts/stops _focused_camera_loop
-                 handles "event" messages → notification_action HA event, climate_set_temperature/hvac_mode → climate service calls, media_command → ha_smart_display_media_command HA event
-    → on disconnect: set unavailable, unsubscribe weather, cancel tasks, retry with backoff
+                 handles "event" messages → notification_action HA event,
+                   climate_set_temperature/hvac_mode → climate service calls,
+                   media_command → ha_smart_display_media_command HA event + forward next/previous to MA entity
+    → on disconnect: set unavailable, unsubscribe weather/MA, cancel tasks, retry with backoff
 ```
 
 ## Camera loops
@@ -87,9 +90,11 @@ return self.async_create_entry(title="", data=data)
 - `async_play_media` resolves URLs in order: `media-source://` URIs → `media_source.async_resolve_media`; relative `/api/...` paths → prepend `get_url(hass, allow_internal=True)`
 - Works with `tts.speak` (modern HA passes `media-source://tts/...`) and Music Assistant
 - MA streams from its own HTTP server on port **8097** — device firewall must allow access to that port
-- Metadata from MA arrives in `kwargs["extra"]` with keys: `title`, `artist`, `album`, `image`, `duration` (seconds)
+- **MA metadata structure**: MA nests metadata under `extra["metadata"]` with camelCase keys: `title`, `artist`, `album`/`albumName`, `imageUrl`, `images[].url`, `duration`. Top-level `extra` keys also tried as fallback for other callers.
+- **MA media player option** (`ma_media_player` in options): when configured, `DeviceConnection` subscribes to that entity's state changes and pushes `{"media_track": {...}}` to the device whenever the track changes. This provides real per-track metadata (title/artist/art) for MA flow streams. Relative `entity_picture` URLs are resolved to absolute.
+- When `ma_media_player` is configured: `async_play_media` sends empty title/art (MA entity provides it via `media_track`), then immediately calls `_push_ma_track()` — both arrive in the same burst so there's no "Music Assistant" flash between tracks.
+- When device taps next/previous: fires `ha_smart_display_media_command` HA event + calls `media_player.media_next/previous_track` on the configured MA entity
 - `media_state` "buffering" maps to `MediaPlayerState.PLAYING` in HA (so HA/MA see it as playing during buffer)
-- When device taps next/previous, fires `ha_smart_display_media_command` HA event with `device_id` + `command`
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.

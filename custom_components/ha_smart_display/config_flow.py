@@ -7,7 +7,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, DEFAULT_PORT
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, DEFAULT_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -166,6 +166,9 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_AUTO_AMBIENT_LUX): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=10000, step=1, mode=selector.NumberSelectorMode.BOX)
             ),
+            vol.Optional(CONF_MA_MEDIA_PLAYER): selector.selector({
+                "entity": {"domain": "media_player"}
+            }),
         })
 
         return self.async_show_form(
@@ -180,6 +183,7 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                     CONF_PHOTO_URLS: self._config_entry.options.get(CONF_PHOTO_URLS, ""),
                     CONF_CAMERA_ENTITIES: self._config_entry.options.get(CONF_CAMERA_ENTITIES, []),
                     CONF_AUTO_AMBIENT_LUX: self._config_entry.options.get(CONF_AUTO_AMBIENT_LUX),
+                    CONF_MA_MEDIA_PLAYER: self._config_entry.options.get(CONF_MA_MEDIA_PLAYER, ""),
                 },
             ),
         )
