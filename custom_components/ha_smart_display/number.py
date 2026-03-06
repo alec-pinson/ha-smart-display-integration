@@ -32,7 +32,7 @@ class BrightnessEntity(HaSmartDisplayEntity, NumberEntity):
         self.async_write_ha_state()
 
     async def async_set_native_value(self, value: float):
-        self._send_command({"brightness": int(value)})
+        self._send_command({"brightness": int(value), "auto_brightness": False})
 
 
 class VolumeEntity(HaSmartDisplayEntity, NumberEntity):

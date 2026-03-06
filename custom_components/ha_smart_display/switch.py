@@ -14,6 +14,7 @@ async def async_setup_entry(
         ScreenOnSwitch(hass, entry),
         AmbientActiveSwitch(hass, entry),
         AlarmSoundingSwitch(hass, entry),
+        AutoBrightnessSwitch(hass, entry),
     ])
 
 
@@ -81,6 +82,28 @@ class AmbientActiveSwitch(HaSmartDisplayEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._send_command({"ambient_active": False})
+
+
+class AutoBrightnessSwitch(HaSmartDisplayEntity, SwitchEntity):
+    _attr_name = "Auto Brightness"
+    _attr_icon = "mdi:brightness-auto"
+
+    @property
+    def entity_description_key(self):
+        return "auto_brightness"
+
+    @property
+    def is_on(self):
+        return self._current_state().get("auto_brightness", False)
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs):
+        self._send_command({"auto_brightness": True})
+
+    async def async_turn_off(self, **kwargs):
+        self._send_command({"auto_brightness": False})
 
 
 class AlarmSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):
