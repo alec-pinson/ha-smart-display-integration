@@ -13,7 +13,8 @@ CONF_HUMIDITY_SENSOR = "humidity_sensor"
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
 
-WAKE_WORD_OPTIONS = ["hey_alexa", "hey_jarvis", "hey_ziggy", "alexa"]
+WAKE_WORD_OPTIONS = ["alexa", "hey_jarvis", "okay_nabu", "hey_mycroft"]
+WAKE_WORD_SENSITIVITY_OPTIONS = ["low", "medium", "high"]
 AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras"]
 
 # Dispatcher signals

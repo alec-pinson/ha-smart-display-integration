@@ -52,6 +52,9 @@ HA computes `remaining_seconds = max(0, int(ends_at - time.time()))` at send tim
 it alongside `ends_at` in the timers payload. Flutter uses `remaining_seconds` if present,
 avoiding clock drift on reconnect.
 
+`_push_timers_alarms()` always sends `{"timers": [...], "alarms": [...]}` on connect, even when
+both lists are empty — this clears any stale data the device had from the previous session.
+
 ## Weather push
 - Triggered on connect + on `async_track_state_change_event` for the configured weather entity
 - Uses `weather.get_forecasts` service (hourly, falls back to daily), sends up to 24 periods
