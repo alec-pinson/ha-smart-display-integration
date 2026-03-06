@@ -26,7 +26,7 @@ async_setup_entry()
     → on connect: push weather + photos + timers/alarms + climate, start camera loop
     → _listen(): handles "state" messages → dispatcher_send → entities update
                  detects focused_camera changes → starts/stops _focused_camera_loop
-                 handles "event" messages → notification_action HA event, climate_set_temperature/hvac_mode → climate service calls
+                 handles "event" messages → notification_action HA event, climate_set_temperature/hvac_mode → climate service calls, media_command → ha_smart_display_media_command HA event
     → on disconnect: set unavailable, unsubscribe weather, cancel tasks, retry with backoff
 ```
 
@@ -81,6 +81,15 @@ Use `add_suggested_values_to_schema` — do NOT use `vol.Optional(field, default
 data = {k: v for k, v in user_input.items() if v not in (None, "")}
 return self.async_create_entry(title="", data=data)
 ```
+
+## Media player entity (`media_player.py`)
+- `HaSmartDisplayMediaPlayer` — supports PLAY_MEDIA, PAUSE, PLAY, STOP, SEEK, NEXT/PREVIOUS, VOLUME_SET, MEDIA_ANNOUNCE
+- `async_play_media` resolves URLs in order: `media-source://` URIs → `media_source.async_resolve_media`; relative `/api/...` paths → prepend `get_url(hass, allow_internal=True)`
+- Works with `tts.speak` (modern HA passes `media-source://tts/...`) and Music Assistant
+- MA streams from its own HTTP server on port **8097** — device firewall must allow access to that port
+- Metadata from MA arrives in `kwargs["extra"]` with keys: `title`, `artist`, `album`, `image`, `duration` (seconds)
+- `media_state` "buffering" maps to `MediaPlayerState.PLAYING` in HA (so HA/MA see it as playing during buffer)
+- When device taps next/previous, fires `ha_smart_display_media_command` HA event with `device_id` + `command`
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.

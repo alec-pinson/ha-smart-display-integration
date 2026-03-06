@@ -36,7 +36,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["select", "switch", "number", "button", "sensor"]
+PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -439,6 +439,14 @@ class DeviceConnection:
                             "device_id": self._device_id,
                             "button": msg.get("button"),
                             "index": msg.get("index"),
+                        },
+                    )
+                elif msg.get("event") == "media_command":
+                    self._hass.bus.async_fire(
+                        f"{DOMAIN}_media_command",
+                        {
+                            "device_id": self._device_id,
+                            "command": msg.get("command"),
                         },
                     )
                 elif msg.get("event") == "climate_set_temperature" and self._climate_entity:

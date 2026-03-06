@@ -22,6 +22,12 @@ AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras"]
 SIGNAL_STATE_UPDATED = f"{DOMAIN}_state_updated_{{device_id}}"
 SIGNAL_AVAILABILITY_UPDATED = f"{DOMAIN}_availability_updated_{{device_id}}"
 
+# Media player states (as reported by device)
+MEDIA_STATE_IDLE = "idle"
+MEDIA_STATE_BUFFERING = "buffering"
+MEDIA_STATE_PLAYING = "playing"
+MEDIA_STATE_PAUSED = "paused"
+
 # Services
 SERVICE_SET_TIMER = "set_timer"
 SERVICE_DISMISS_TIMER = "dismiss_timer"
