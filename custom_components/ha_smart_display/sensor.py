@@ -1,5 +1,6 @@
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import LIGHT_LUX
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -12,6 +13,7 @@ async def async_setup_entry(
     async_add_entities([
         UptimeSensor(hass, entry),
         WakeWordCountSensor(hass, entry),
+        LuxSensor(hass, entry),
     ])
 
 
@@ -45,6 +47,28 @@ class WakeWordCountSensor(HaSmartDisplayEntity, SensorEntity):
     @property
     def native_value(self):
         return self._current_state().get("wake_word_count", 0)
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+
+class LuxSensor(HaSmartDisplayEntity, SensorEntity):
+    _attr_name = "Illuminance"
+    _attr_icon = "mdi:brightness-5"
+    _attr_device_class = SensorDeviceClass.ILLUMINANCE
+    _attr_native_unit_of_measurement = LIGHT_LUX
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def entity_description_key(self):
+        return "lux"
+
+    @property
+    def native_value(self):
+        val = self._current_state().get("lux")
+        if val is None:
+            return None
+        return round(float(val), 1)
 
     def _handle_state_update(self, payload):
         self.async_write_ha_state()
