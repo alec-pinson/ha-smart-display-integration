@@ -720,10 +720,22 @@ class DeviceConnection:
 
         response_text = result.get("text", "")
         _LOGGER.debug("ha_smart_display: voice pipeline result: %r", response_text)
+
+        # Resolve relative tts_url to a full URL the device can fetch directly
+        tts_url = result.get("tts_url")
+        if tts_url:
+            try:
+                from homeassistant.helpers.network import get_url
+                base_url = get_url(self._hass, allow_internal=True, prefer_external=False)
+                tts_url = f"{base_url.rstrip('/')}{tts_url}"
+            except Exception as e:
+                _LOGGER.warning("ha_smart_display: could not resolve TTS URL: %s", e)
+                tts_url = None
+
         await self.send_command({
             "voice_response": {
                 "text": response_text,
-                "tts_url": result.get("tts_url"),
+                "tts_url": tts_url,
             }
         })
 
