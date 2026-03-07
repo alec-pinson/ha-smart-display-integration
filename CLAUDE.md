@@ -94,7 +94,24 @@ return self.async_create_entry(title="", data=data)
 - **MA media player option** (`ma_media_player` in options): when configured, `DeviceConnection` subscribes to that entity's state changes and pushes `{"media_track": {...}}` to the device whenever the track changes. This provides real per-track metadata (title/artist/art) for MA flow streams. Relative `entity_picture` URLs are resolved to absolute.
 - When `ma_media_player` is configured: `async_play_media` sends empty title/art (MA entity provides it via `media_track`), then immediately calls `_push_ma_track()` — both arrive in the same burst so there's no "Music Assistant" flash between tracks.
 - When device taps next/previous: fires `ha_smart_display_media_command` HA event + calls `media_player.media_next/previous_track` on the configured MA entity
+- When device sends `shuffle` media_command: `_handle_shuffle_toggle()` reads current shuffle state from MA entity state, calls `media_player.shuffle_set` with toggled value
 - `media_state` "buffering" maps to `MediaPlayerState.PLAYING` in HA (so HA/MA see it as playing during buffer)
+
+## Music library browsing
+Device can browse the MA media library via a two-step protocol:
+
+1. **Device sends** `{"type": "event", "event": "browse_media", "category": "artists"}` (categories: artists / albums / tracks / playlists / radio)
+2. **Integration** calls `_handle_browse_request(category)`:
+   - Gets MA entity via `hass.data["media_player"].get_entity(ma_entity_id)`
+   - Browses root first (`async_browse_media(None, None)`) to discover the real content IDs MA uses
+   - Matches root child by title keyword (e.g. "artist" in child.title.lower())
+   - Browses into that child to get actual items
+   - Resolves relative thumbnail URLs to absolute
+   - Sends `{"browse_result": {"category": "...", "items": [...]}}` back to device
+3. **Device sends** `{"type": "event", "event": "play_media_item", "media_content_id": "...", "media_content_type": "..."}` to play a browsed item
+4. **Integration** calls `media_player.play_media` service on MA entity
+
+**Key**: always browse root first — do NOT guess at MA content IDs. MA's content ID format varies across versions; discovering from root ensures correct IDs.
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.

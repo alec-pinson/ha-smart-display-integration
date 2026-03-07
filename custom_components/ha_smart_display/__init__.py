@@ -475,6 +475,26 @@ class DeviceConnection:
                                 {"entity_id": self._ma_media_player},
                             )
                         )
+                    elif self._ma_media_player and command == "shuffle":
+                        self._hass.async_create_task(self._handle_shuffle_toggle())
+                elif msg.get("event") == "browse_media":
+                    category = msg.get("category", "")
+                    self._hass.async_create_task(self._handle_browse_request(category))
+                elif msg.get("event") == "play_media_item":
+                    media_content_id = msg.get("media_content_id", "")
+                    media_content_type = msg.get("media_content_type", "")
+                    if self._ma_media_player and media_content_id:
+                        self._hass.async_create_task(
+                            self._hass.services.async_call(
+                                "media_player",
+                                "play_media",
+                                {
+                                    "entity_id": self._ma_media_player,
+                                    "media_content_id": media_content_id,
+                                    "media_content_type": media_content_type,
+                                },
+                            )
+                        )
                 elif msg.get("event") == "climate_set_temperature" and self._climate_entity:
                     temperature = msg.get("temperature")
                     if temperature is not None:
@@ -527,6 +547,95 @@ class DeviceConnection:
     def _on_ma_state_change(self, event) -> None:
         """Called when the MA media player entity state changes."""
         self._hass.async_create_task(self._push_ma_track())
+
+    async def _handle_shuffle_toggle(self) -> None:
+        """Toggle shuffle on the configured MA media player."""
+        if not self._ws or not self._ma_media_player:
+            return
+        state = self._hass.states.get(self._ma_media_player)
+        current = state.attributes.get("shuffle", False) if state else False
+        try:
+            await self._hass.services.async_call(
+                "media_player",
+                "shuffle_set",
+                {"entity_id": self._ma_media_player, "shuffle": not current},
+            )
+        except Exception as e:
+            _LOGGER.warning("ha_smart_display: shuffle_set failed: %s", e)
+
+    async def _handle_browse_request(self, category: str) -> None:
+        """Browse MA media library for a category and push results to device."""
+        if not self._ws or not self._ma_media_player:
+            return
+        # Titles MA uses for each root-level category (matched case-insensitively)
+        category_keywords = {
+            "artists": ["artist"],
+            "albums": ["album"],
+            "tracks": ["track", "song"],
+            "playlists": ["playlist"],
+            "radio": ["radio"],
+        }
+        keywords = category_keywords.get(category, [category])
+        try:
+            from homeassistant.components.media_player import DOMAIN as MP_DOMAIN
+            entity_comp = self._hass.data.get(MP_DOMAIN)
+            if not entity_comp:
+                _LOGGER.warning("ha_smart_display: media_player component not found for browse")
+                await self.send_command({"browse_result": {"category": category, "items": []}})
+                return
+            entity = entity_comp.get_entity(self._ma_media_player)
+            if not entity or not hasattr(entity, "async_browse_media"):
+                _LOGGER.warning("ha_smart_display: MA entity not found or doesn't support browse")
+                await self.send_command({"browse_result": {"category": category, "items": []}})
+                return
+
+            # Browse root to discover the real content IDs MA uses for each category
+            root = await entity.async_browse_media(None, None)
+            category_item = None
+            for child in (root.children or []):
+                title_lower = (child.title or "").lower()
+                if any(kw in title_lower for kw in keywords):
+                    category_item = child
+                    break
+
+            if not category_item:
+                _LOGGER.warning(
+                    "ha_smart_display: category '%s' not found in MA root browse (children: %s)",
+                    category,
+                    [c.title for c in (root.children or [])],
+                )
+                await self.send_command({"browse_result": {"category": category, "items": []}})
+                return
+
+            # Browse into the matched category to get actual items
+            result = await entity.async_browse_media(
+                category_item.media_content_type,
+                category_item.media_content_id,
+            )
+            items = []
+            for child in (result.children or []):
+                thumbnail = child.thumbnail
+                if thumbnail and thumbnail.startswith("/"):
+                    try:
+                        from homeassistant.helpers.network import get_url
+                        base = get_url(self._hass, allow_internal=True, prefer_external=False)
+                        thumbnail = f"{base.rstrip('/')}{thumbnail}"
+                    except Exception:
+                        pass
+                subtitle = getattr(child, "media_artist", None) or getattr(child, "media_album_name", None)
+                items.append({
+                    "title": child.title or "",
+                    "subtitle": subtitle,
+                    "thumbnail": thumbnail,
+                    "media_content_id": child.media_content_id or "",
+                    "media_content_type": child.media_content_type or "",
+                    "can_play": child.can_play,
+                    "can_expand": child.can_expand,
+                })
+            await self.send_command({"browse_result": {"category": category, "items": items}})
+        except Exception as e:
+            _LOGGER.warning("ha_smart_display: browse_media failed for '%s': %s", category, e)
+            await self.send_command({"browse_result": {"category": category, "items": []}})
 
     async def _push_ma_track(self):
         if not self._ws or not self._ma_media_player:
