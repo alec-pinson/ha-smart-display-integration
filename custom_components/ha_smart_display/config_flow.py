@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 
 import voluptuous as vol
+import websockets
 
 from homeassistant import config_entries
 from homeassistant.helpers import selector
@@ -30,6 +32,7 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._device_name = name or "HA Smart Display"
 
         device_id = discovery_info.properties.get("device_id", "")
+        _LOGGER.info("ha_smart_display: discovered device '%s' at %s:%s", name or "unknown", self._host, self._port)
         if device_id:
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured(
@@ -96,9 +99,6 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _try_pair(self, code: str) -> dict | bool | None:
-        import json
-        import websockets
-
         uri = f"ws://{self._host}:{self._port}"
         _LOGGER.debug("ha_smart_display: attempting to connect to %s", uri)
         try:
@@ -107,6 +107,7 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 raw = await asyncio.wait_for(ws.recv(), timeout=10)
                 msg = json.loads(raw)
                 if msg.get("type") == "pair_ok":
+                    _LOGGER.info("ha_smart_display: pairing successful with %s", self._host)
                     return {
                         "device_id": msg["device_id"],
                         "device_name": msg.get("device_name", self._device_name),
@@ -125,6 +126,7 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._last_error_detail = str(e)
             _LOGGER.warning("ha_smart_display: pairing connection failed: %s", e)
             return None
+        _LOGGER.warning("ha_smart_display: unexpected pairing response: %s", msg.get("type"))
         return False
 
     @staticmethod

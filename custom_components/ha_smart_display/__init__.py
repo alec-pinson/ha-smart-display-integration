@@ -424,6 +424,7 @@ class DeviceConnection:
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
+                _LOGGER.warning("ha_smart_display: received malformed JSON: %s", raw[:200])
                 continue
 
             msg_type = msg.get("type")
@@ -687,8 +688,8 @@ class DeviceConnection:
                         from homeassistant.helpers.network import get_url
                         base = get_url(self._hass, allow_internal=True, prefer_external=False)
                         thumbnail = f"{base.rstrip('/')}{thumbnail}"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _LOGGER.debug("ha_smart_display: could not resolve thumbnail URL: %s", e)
                 subtitle = getattr(child, "media_artist", None) or getattr(child, "media_album_name", None)
                 items.append({
                     "title": child.title or "",
@@ -717,8 +718,8 @@ class DeviceConnection:
                 from homeassistant.helpers.network import get_url
                 base = get_url(self._hass, allow_internal=True, prefer_external=False)
                 art_url = f"{base.rstrip('/')}{art_url}"
-            except Exception:
-                pass
+            except Exception as e:
+                _LOGGER.debug("ha_smart_display: could not resolve art URL: %s", e)
         duration = state.attributes.get("media_duration") or 0
         position = state.attributes.get("media_position") or 0
         track = {
