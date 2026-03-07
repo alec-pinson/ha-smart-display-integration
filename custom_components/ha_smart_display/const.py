@@ -11,6 +11,8 @@ CONF_TEMPERATURE_SENSOR = "temperature_sensor"
 CONF_HUMIDITY_SENSOR = "humidity_sensor"
 CONF_AUTO_AMBIENT_LUX = "auto_ambient_lux"
 CONF_MA_MEDIA_PLAYER = "ma_media_player"
+CONF_DOOR_ENTITIES = "door_entities"
+CONF_MOTION_ENTITIES = "motion_entities"
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
