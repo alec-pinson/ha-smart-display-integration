@@ -475,8 +475,7 @@ class DeviceConnection:
                 if msg.get("event") == "voice_command_audio":
                     audio_b64 = msg.get("audio")
                     if audio_b64:
-                        import base64 as _b64
-                        audio_bytes = _b64.b64decode(audio_b64)
+                        audio_bytes = base64.b64decode(audio_b64)
                         self._hass.async_create_task(
                             self._run_voice_pipeline(audio_bytes)
                         )
@@ -981,7 +980,7 @@ class DeviceConnection:
 
         # Resolve relative tts_url to a full URL the device can fetch directly
         tts_url = result.get("tts_url")
-        if tts_url:
+        if tts_url and tts_url.startswith("/"):
             try:
                 from homeassistant.helpers.network import get_url
                 base_url = get_url(self._hass, allow_internal=True, prefer_external=False)
@@ -1009,7 +1008,7 @@ class DeviceConnection:
 
     async def send_command(self, payload: dict):
         if self._ws is None:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "ha_smart_display: cannot send command, not connected (%s)",
                 self._device_id,
             )
