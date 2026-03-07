@@ -553,13 +553,15 @@ class DeviceConnection:
         if not self._ws or not self._ma_media_player:
             return
         state = self._hass.states.get(self._ma_media_player)
-        current = state.attributes.get("shuffle", False) if state else False
+        current = bool(state.attributes.get("shuffle", False)) if state else False
+        new_shuffle = not current
         try:
             await self._hass.services.async_call(
                 "media_player",
                 "shuffle_set",
-                {"entity_id": self._ma_media_player, "shuffle": not current},
+                {"entity_id": self._ma_media_player, "shuffle": new_shuffle},
             )
+            await self.send_command({"shuffle_enabled": new_shuffle})
         except Exception as e:
             _LOGGER.warning("ha_smart_display: shuffle_set failed: %s", e)
 
@@ -662,7 +664,8 @@ class DeviceConnection:
             "duration_ms": int(duration * 1000),
             "position_ms": int(position * 1000),
         }
-        await self.send_command({"media_track": track})
+        shuffle = bool(state.attributes.get("shuffle", False))
+        await self.send_command({"media_track": track, "shuffle_enabled": shuffle})
 
     async def _push_climate(self):
         if not self._ws:

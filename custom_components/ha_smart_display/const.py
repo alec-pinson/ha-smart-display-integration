@@ -17,7 +17,7 @@ PAIRING_TIMEOUT = 30
 
 WAKE_WORD_OPTIONS = ["alexa", "hey_jarvis", "okay_nabu", "hey_mycroft"]
 WAKE_WORD_SENSITIVITY_OPTIONS = ["low", "medium", "high"]
-AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras"]
+AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras", "music"]
 
 # Dispatcher signals
 SIGNAL_STATE_UPDATED = f"{DOMAIN}_state_updated_{{device_id}}"
