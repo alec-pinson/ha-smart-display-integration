@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import WAKE_WORD_OPTIONS, WAKE_WORD_SENSITIVITY_OPTIONS, AMBIENT_MODE_OPTIONS
+from .const import WAKE_WORD_OPTIONS, WAKE_WORD_SENSITIVITY_OPTIONS, VAD_SENSITIVITY_OPTIONS, AMBIENT_MODE_OPTIONS
 from .entity_base import HaSmartDisplayEntity
 
 
@@ -13,6 +13,7 @@ async def async_setup_entry(
     async_add_entities([
         WakeWordSelect(hass, entry),
         WakeWordSensitivitySelect(hass, entry),
+        VadSensitivitySelect(hass, entry),
         AmbientModeSelect(hass, entry),
     ])
 
@@ -55,6 +56,26 @@ class WakeWordSensitivitySelect(HaSmartDisplayEntity, SelectEntity):
 
     async def async_select_option(self, option: str):
         self._send_command({"wake_word_sensitivity": option})
+
+
+class VadSensitivitySelect(HaSmartDisplayEntity, SelectEntity):
+    _attr_name = "Finished Speaking Detection"
+    _attr_icon = "mdi:waveform"
+    _attr_options = VAD_SENSITIVITY_OPTIONS
+
+    @property
+    def entity_description_key(self):
+        return "vad_sensitivity"
+
+    @property
+    def current_option(self):
+        return self._current_state().get("vad_sensitivity", "default")
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+    async def async_select_option(self, option: str):
+        self._send_command({"vad_sensitivity": option})
 
 
 class AmbientModeSelect(HaSmartDisplayEntity, SelectEntity):

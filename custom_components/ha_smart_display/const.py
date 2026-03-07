@@ -19,6 +19,7 @@ PAIRING_TIMEOUT = 30
 
 WAKE_WORD_OPTIONS = ["alexa", "hey_jarvis", "okay_nabu", "hey_mycroft"]
 WAKE_WORD_SENSITIVITY_OPTIONS = ["low", "medium", "high"]
+VAD_SENSITIVITY_OPTIONS = ["default", "relaxed", "aggressive"]
 AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras", "music"]
 
 # Dispatcher signals
