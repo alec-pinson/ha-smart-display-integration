@@ -119,8 +119,8 @@ Device can browse the MA media library via a two-step protocol:
 
 ## Immich integration
 - **`ImmichProvider`** class in `__init__.py` — instantiated per `DeviceConnection` if `immich_url + immich_api_key + immich_album_ids` all present in options
-- `fetch_photos()` calls `GET /api/albums/{id}` for each album, collects image asset IDs, shuffles, takes `batch_size`, returns thumbnail URLs (`/api/assets/{id}/thumbnail?size=preview`)
-- `_push_photos()` merges static `photo_urls` + Immich results, shuffles, sends `{"photos": [...]}` — always sends even when Immich returns empty
+- `fetch_photos()` calls `GET /api/albums/{id}` for each album, collects image assets with EXIF metadata, shuffles, takes `batch_size`, returns list of dicts `{"url", "album", "location"}` — `album` from `albumName`, `location` from EXIF `city` (fallback `country`), `location` omitted if already in album name
+- `_push_photos()` merges static `photo_urls` (wrapped as `{"url": u}`) + Immich results, shuffles, sends `{"photos": [...]}` — always sends even when Immich returns empty
 - `_send_immich_config()` sends `{"immich_config": {"url": ..., "api_key": ...}}` once per connection so Flutter can add auth headers
 - Periodic refresh: `async_track_time_interval` schedules `_on_immich_refresh` every N minutes; unsubscribed in `finally` block on disconnect
 - **Options flow is two-step**: `async_step_init` validates credentials + fetches albums; on success stores pending options + album list and calls `async_step_immich_albums`; on failure shows `immich_connection_failed` error; `async_step_immich_albums` shows `SelectSelector(multiple=True)` populated from the fetched album list

@@ -58,10 +58,10 @@ class ImmichProvider:
         self._album_ids = album_ids
         self._batch_size = batch_size
 
-    async def fetch_photos(self) -> list[str]:
-        """Return a shuffled batch of thumbnail URLs from the configured albums."""
+    async def fetch_photos(self) -> list[dict]:
+        """Return a shuffled batch of photo dicts (url, album, location) from the configured albums."""
         import aiohttp
-        asset_ids: list[str] = []
+        assets: list[dict] = []  # {id, album, location}
         try:
             async with aiohttp.ClientSession(headers={"x-api-key": self._api_key}) as session:
                 for album_id in self._album_ids:
@@ -72,17 +72,36 @@ class ImmichProvider:
                         ) as resp:
                             if resp.status == 200:
                                 data = await resp.json()
+                                album_name = data.get("albumName") or data.get("name") or ""
                                 for asset in data.get("assets", []):
                                     if asset.get("type") == "IMAGE":
-                                        asset_ids.append(asset["id"])
+                                        exif = asset.get("exifInfo") or {}
+                                        city = exif.get("city") or ""
+                                        country = exif.get("country") or ""
+                                        location = city or country or None
+                                        # Omit location if it already appears in the album name
+                                        if location and location.lower() in album_name.lower():
+                                            location = None
+                                        assets.append({
+                                            "id": asset["id"],
+                                            "album": album_name or None,
+                                            "location": location,
+                                        })
                     except Exception as e:
                         _LOGGER.debug("ha_smart_display: Immich album %s fetch failed: %s", album_id, e)
         except Exception as e:
             _LOGGER.warning("ha_smart_display: Immich fetch_photos failed: %s", e)
             return []
-        random.shuffle(asset_ids)
-        batch = asset_ids[: self._batch_size]
-        return [f"{self._url}/api/assets/{aid}/thumbnail?size=preview" for aid in batch]
+        random.shuffle(assets)
+        batch = assets[: self._batch_size]
+        return [
+            {
+                "url": f"{self._url}/api/assets/{a['id']}/thumbnail?size=preview",
+                "album": a["album"],
+                "location": a["location"],
+            }
+            for a in batch
+        ]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -932,7 +951,8 @@ class DeviceConnection:
             self._hass.async_create_task(self._push_photos())
 
     async def _push_photos(self):
-        static_photos = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
+        static_urls = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
+        static_photos = [{"url": u} for u in static_urls]
         immich_photos = await self._immich_provider.fetch_photos() if self._immich_provider else []
         merged = static_photos + immich_photos
         random.shuffle(merged)
