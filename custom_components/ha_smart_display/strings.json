@@ -38,13 +38,32 @@
           "photo_urls": "Photo URLs",
           "camera_entities": "Camera Entities",
           "auto_ambient_lux": "Auto Ambient Lux Threshold",
-          "ma_media_player": "Music Assistant Media Player"
+          "ma_media_player": "Music Assistant Media Player",
+          "immich_url": "Immich URL",
+          "immich_api_key": "Immich API Key",
+          "immich_refresh_interval": "Immich Refresh Interval (minutes)",
+          "immich_batch_size": "Immich Batch Size (photos)",
+          "slideshow_interval": "Slideshow Interval"
         },
         "data_description": {
           "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen.",
-          "auto_ambient_lux": "Switch to ambient mode when lux drops below this value. Leave blank to disable."
+          "auto_ambient_lux": "Switch to ambient mode when lux drops below this value. Leave blank to disable.",
+          "immich_url": "URL of your Immich server (e.g. http://192.168.1.x:2283). Leave blank to disable Immich.",
+          "immich_api_key": "Immich API key. Required when Immich URL is set."
+        }
+      },
+      "immich_albums": {
+        "title": "Select Immich Albums",
+        "data": {
+          "immich_album_ids": "Albums"
+        },
+        "data_description": {
+          "immich_album_ids": "Select which Immich albums to include in the photo slideshow."
         }
       }
+    },
+    "error": {
+      "immich_connection_failed": "Could not connect to Immich. Check the URL and API key and try again."
     }
   }
 }

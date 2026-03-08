@@ -2,14 +2,15 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
 import websockets
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 
 from .const import (
     DOMAIN,
@@ -26,6 +27,12 @@ from .const import (
     CONF_MA_MEDIA_PLAYER,
     CONF_DOOR_ENTITIES,
     CONF_MOTION_ENTITIES,
+    CONF_IMMICH_URL,
+    CONF_IMMICH_API_KEY,
+    CONF_IMMICH_ALBUM_IDS,
+    CONF_IMMICH_REFRESH_INTERVAL,
+    CONF_IMMICH_BATCH_SIZE,
+    CONF_SLIDESHOW_INTERVAL,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -42,6 +49,42 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player"]
 
 
+class ImmichProvider:
+    """Fetches a shuffled batch of photo thumbnail URLs from Immich albums."""
+
+    def __init__(self, url: str, api_key: str, album_ids: list[str], batch_size: int):
+        self._url = url.rstrip("/")
+        self._api_key = api_key
+        self._album_ids = album_ids
+        self._batch_size = batch_size
+
+    async def fetch_photos(self) -> list[str]:
+        """Return a shuffled batch of thumbnail URLs from the configured albums."""
+        import aiohttp
+        asset_ids: list[str] = []
+        try:
+            async with aiohttp.ClientSession(headers={"x-api-key": self._api_key}) as session:
+                for album_id in self._album_ids:
+                    try:
+                        async with session.get(
+                            f"{self._url}/api/albums/{album_id}",
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                for asset in data.get("assets", []):
+                                    if asset.get("type") == "IMAGE":
+                                        asset_ids.append(asset["id"])
+                    except Exception as e:
+                        _LOGGER.debug("ha_smart_display: Immich album %s fetch failed: %s", album_id, e)
+        except Exception as e:
+            _LOGGER.warning("ha_smart_display: Immich fetch_photos failed: %s", e)
+            return []
+        random.shuffle(asset_ids)
+        batch = asset_ids[: self._batch_size]
+        return [f"{self._url}/api/assets/{aid}/thumbnail?size=preview" for aid in batch]
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_id = entry.data[CONF_DEVICE_ID]
     host = entry.data[CONF_HOST]
@@ -56,6 +99,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ma_media_player = entry.options.get(CONF_MA_MEDIA_PLAYER) or None
     door_entities = entry.options.get(CONF_DOOR_ENTITIES, [])
     motion_entities = entry.options.get(CONF_MOTION_ENTITIES, [])
+    immich_url = entry.options.get(CONF_IMMICH_URL, "")
+    immich_api_key = entry.options.get(CONF_IMMICH_API_KEY, "")
+    immich_album_ids = entry.options.get(CONF_IMMICH_ALBUM_IDS, [])
+    immich_refresh_interval = int(entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60))
+    immich_batch_size = int(entry.options.get(CONF_IMMICH_BATCH_SIZE, 30))
+    slideshow_interval = int(entry.options.get(CONF_SLIDESHOW_INTERVAL, 1)) * 60  # convert minutes → seconds
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -66,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "photos": photo_urls,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, door_entities, motion_entities)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, door_entities, motion_entities, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -281,7 +330,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, door_entities=None, motion_entities=None):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, door_entities=None, motion_entities=None, immich_url="", immich_api_key="", immich_album_ids=None, immich_refresh_interval=60, immich_batch_size=30, slideshow_interval=60):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -305,9 +354,17 @@ class DeviceConnection:
         self._unsub_ma = None
         self._unsub_doors = None
         self._unsub_motion = None
+        self._unsub_immich_refresh = None
         self._camera_task = None
         self._focused_camera: str | None = None
         self._fast_camera_task = None
+        self._immich_refresh_interval = immich_refresh_interval
+        self._slideshow_interval = slideshow_interval
+        self._immich_provider = (
+            ImmichProvider(immich_url, immich_api_key, immich_album_ids or [], immich_batch_size)
+            if (immich_url and immich_api_key and immich_album_ids)
+            else None
+        )
 
     async def run(self):
         while self._running:
@@ -372,7 +429,15 @@ class DeviceConnection:
                         )
                         await self._push_motion()
 
-                    # Push photos and timers/alarms
+                    # Send Immich config + push photos and timers/alarms
+                    if self._immich_provider:
+                        await self._send_immich_config()
+                        self._unsub_immich_refresh = async_track_time_interval(
+                            self._hass,
+                            self._on_immich_refresh,
+                            timedelta(minutes=self._immich_refresh_interval),
+                        )
+                    await self.send_command({"slideshow_interval": self._slideshow_interval})
                     await self._push_photos()
                     await self._push_timers_alarms()
 
@@ -407,6 +472,9 @@ class DeviceConnection:
                 if self._unsub_motion:
                     self._unsub_motion()
                     self._unsub_motion = None
+                if self._unsub_immich_refresh:
+                    self._unsub_immich_refresh()
+                    self._unsub_immich_refresh = None
                 if self._camera_task:
                     self._camera_task.cancel()
                     self._camera_task = None
@@ -848,9 +916,27 @@ class DeviceConnection:
         }
         await self.send_command({"weather": weather_payload})
 
+    async def _send_immich_config(self):
+        if self._immich_provider:
+            await self.send_command({
+                "immich_config": {
+                    "url": self._immich_provider._url,
+                    "api_key": self._immich_provider._api_key,
+                }
+            })
+
+    @callback
+    def _on_immich_refresh(self, now=None) -> None:
+        """Periodic Immich photo refresh."""
+        if self._ws:
+            self._hass.async_create_task(self._push_photos())
+
     async def _push_photos(self):
-        photos = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
-        await self.send_command({"photos": photos})
+        static_photos = self._hass.data[DOMAIN].get(self._device_id, {}).get("photos", [])
+        immich_photos = await self._immich_provider.fetch_photos() if self._immich_provider else []
+        merged = static_photos + immich_photos
+        random.shuffle(merged)
+        await self.send_command({"photos": merged})
 
     async def _camera_loop(self):
         """Push camera snapshots while connected — 10s when visible, 60s otherwise."""

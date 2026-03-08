@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_DOOR_ENTITIES, CONF_MOTION_ENTITIES, DEFAULT_PORT
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_DOOR_ENTITIES, CONF_MOTION_ENTITIES, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,17 +134,52 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return HaSmartDisplayOptionsFlow(config_entry)
 
 
+async def _fetch_immich_albums(url: str, api_key: str) -> list[dict]:
+    """Fetch album list from Immich. Returns list of {id, albumName}. Raises on failure."""
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{url.rstrip('/')}/api/albums",
+            headers={"x-api-key": api_key},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status != 200:
+                raise Exception(f"HTTP {resp.status}")
+            data = await resp.json()
+            return [{"id": a["id"], "albumName": a["albumName"]} for a in data if "id" in a]
+
+
 class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         self._config_entry = config_entry
+        self._pending_options: dict = {}
+        self._pending_albums: list[dict] = []
 
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> config_entries.FlowResult:
+        errors = {}
+
         if user_input is not None:
             # Strip empty/None values for optional entity fields so clearing them works
-            data = {k: v for k, v in user_input.items() if v not in (None, "")}
-            return self.async_create_entry(title="", data=data)
+            data = {k: v for k, v in user_input.items() if v not in (None, "", [])}
+            immich_url = data.get(CONF_IMMICH_URL, "").strip()
+            immich_api_key = data.get(CONF_IMMICH_API_KEY, "").strip()
+
+            if immich_url and immich_api_key:
+                # Validate Immich credentials and fetch album list
+                try:
+                    albums = await _fetch_immich_albums(immich_url, immich_api_key)
+                except Exception:
+                    errors["base"] = "immich_connection_failed"
+                else:
+                    self._pending_options = data
+                    self._pending_albums = albums
+                    return await self.async_step_immich_albums()
+            else:
+                # Immich disabled — drop any previously saved album IDs and save
+                data.pop(CONF_IMMICH_ALBUM_IDS, None)
+                return self.async_create_entry(title="", data=data)
 
         schema = vol.Schema({
             vol.Optional(CONF_WEATHER_ENTITY): selector.selector({
@@ -177,6 +212,21 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_MOTION_ENTITIES): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
             ),
+            vol.Optional(CONF_IMMICH_URL): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+            ),
+            vol.Optional(CONF_IMMICH_API_KEY): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional(CONF_IMMICH_REFRESH_INTERVAL): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=5, max=1440, step=1, unit_of_measurement="min", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_IMMICH_BATCH_SIZE): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=5, max=100, step=1, unit_of_measurement="photos", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Optional(CONF_SLIDESHOW_INTERVAL): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=60, step=1, unit_of_measurement="min", mode=selector.NumberSelectorMode.BOX)
+            ),
         })
 
         return self.async_show_form(
@@ -194,6 +244,45 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                     CONF_MA_MEDIA_PLAYER: self._config_entry.options.get(CONF_MA_MEDIA_PLAYER, ""),
                     CONF_DOOR_ENTITIES: self._config_entry.options.get(CONF_DOOR_ENTITIES, []),
                     CONF_MOTION_ENTITIES: self._config_entry.options.get(CONF_MOTION_ENTITIES, []),
+                    CONF_IMMICH_URL: self._config_entry.options.get(CONF_IMMICH_URL, ""),
+                    CONF_IMMICH_API_KEY: self._config_entry.options.get(CONF_IMMICH_API_KEY, ""),
+                    CONF_IMMICH_REFRESH_INTERVAL: self._config_entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60),
+                    CONF_IMMICH_BATCH_SIZE: self._config_entry.options.get(CONF_IMMICH_BATCH_SIZE, 30),
+                    CONF_SLIDESHOW_INTERVAL: self._config_entry.options.get(CONF_SLIDESHOW_INTERVAL, 1),
                 },
+            ),
+            errors=errors,
+        )
+
+    async def async_step_immich_albums(
+        self, user_input: dict | None = None
+    ) -> config_entries.FlowResult:
+        if user_input is not None:
+            album_ids = user_input.get(CONF_IMMICH_ALBUM_IDS, [])
+            data = {**self._pending_options}
+            if album_ids:
+                data[CONF_IMMICH_ALBUM_IDS] = album_ids
+            else:
+                data.pop(CONF_IMMICH_ALBUM_IDS, None)
+            return self.async_create_entry(title="", data=data)
+
+        existing_ids = self._config_entry.options.get(CONF_IMMICH_ALBUM_IDS, [])
+        schema = vol.Schema({
+            vol.Optional(CONF_IMMICH_ALBUM_IDS): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=a["id"], label=a["albumName"])
+                        for a in self._pending_albums
+                    ],
+                    multiple=True,
+                )
+            ),
+        })
+
+        return self.async_show_form(
+            step_id="immich_albums",
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
+                {CONF_IMMICH_ALBUM_IDS: existing_ids},
             ),
         )

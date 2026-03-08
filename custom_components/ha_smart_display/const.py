@@ -13,6 +13,12 @@ CONF_AUTO_AMBIENT_LUX = "auto_ambient_lux"
 CONF_MA_MEDIA_PLAYER = "ma_media_player"
 CONF_DOOR_ENTITIES = "door_entities"
 CONF_MOTION_ENTITIES = "motion_entities"
+CONF_IMMICH_URL = "immich_url"
+CONF_IMMICH_API_KEY = "immich_api_key"
+CONF_IMMICH_ALBUM_IDS = "immich_album_ids"
+CONF_IMMICH_REFRESH_INTERVAL = "immich_refresh_interval"  # minutes, default 60
+CONF_IMMICH_BATCH_SIZE = "immich_batch_size"              # photos per refresh, default 30
+CONF_SLIDESHOW_INTERVAL = "slideshow_interval"            # minutes, default 1
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
