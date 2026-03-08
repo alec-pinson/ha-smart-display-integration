@@ -23,7 +23,10 @@ Always use `--context pi-k8s-cluster`. Always delete the pod after copying.
 async_setup_entry()
   → DeviceConnection.run()  [background task, reconnects forever]
     → websockets.connect(ws://host:8472)
-    → on connect: push weather + photos + timers/alarms + climate, start camera loop
+    → on connect: send immich_config (if Immich configured) + schedule immich refresh timer
+                  send slideshow_interval command
+                  push weather + photos (static + Immich merged) + timers/alarms + climate
+                  start camera loop
                   subscribe to MA media player entity if configured + push current track
                   subscribe to door/motion entities if configured + push initial state
     → _listen(): handles "state" messages → dispatcher_send → entities update
@@ -31,7 +34,7 @@ async_setup_entry()
                  handles "event" messages → notification_action HA event,
                    climate_set_temperature/hvac_mode → climate service calls,
                    media_command → ha_smart_display_media_command HA event + forward next/previous to MA entity
-    → on disconnect: set unavailable, unsubscribe weather/MA/doors/motion, cancel tasks, retry with backoff
+    → on disconnect: set unavailable, unsubscribe weather/MA/doors/motion/immich_refresh, cancel tasks, retry with backoff
 ```
 
 ## Camera loops
@@ -113,6 +116,17 @@ Device can browse the MA media library via a two-step protocol:
 4. **Integration** calls `media_player.play_media` service on MA entity
 
 **Key**: always browse root first — do NOT guess at MA content IDs. MA's content ID format varies across versions; discovering from root ensures correct IDs.
+
+## Immich integration
+- **`ImmichProvider`** class in `__init__.py` — instantiated per `DeviceConnection` if `immich_url + immich_api_key + immich_album_ids` all present in options
+- `fetch_photos()` calls `GET /api/albums/{id}` for each album, collects image asset IDs, shuffles, takes `batch_size`, returns thumbnail URLs (`/api/assets/{id}/thumbnail?size=preview`)
+- `_push_photos()` merges static `photo_urls` + Immich results, shuffles, sends `{"photos": [...]}` — always sends even when Immich returns empty
+- `_send_immich_config()` sends `{"immich_config": {"url": ..., "api_key": ...}}` once per connection so Flutter can add auth headers
+- Periodic refresh: `async_track_time_interval` schedules `_on_immich_refresh` every N minutes; unsubscribed in `finally` block on disconnect
+- **Options flow is two-step**: `async_step_init` validates credentials + fetches albums; on success stores pending options + album list and calls `async_step_immich_albums`; on failure shows `immich_connection_failed` error; `async_step_immich_albums` shows `SelectSelector(multiple=True)` populated from the fetched album list
+- Strip `immich_album_ids` from saved options when Immich URL or API key is cleared
+- `slideshow_interval` stored in options as minutes, sent to device as seconds (`× 60`)
+- Next/Previous Photo buttons in `button.py` send `{"photo_command": "next/previous"}`
 
 ## Important HA version note
 `ZeroconfServiceInfo` is at `homeassistant.helpers.service_info.zeroconf` — NOT `homeassistant.components.zeroconf`.
