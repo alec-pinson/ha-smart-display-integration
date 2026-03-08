@@ -8,9 +8,10 @@ from datetime import datetime, timedelta
 import websockets
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.storage import Store
 
 from .const import (
     DOMAIN,
@@ -25,8 +26,6 @@ from .const import (
     CONF_HUMIDITY_SENSOR,
     CONF_AUTO_AMBIENT_LUX,
     CONF_MA_MEDIA_PLAYER,
-    CONF_DOOR_ENTITIES,
-    CONF_MOTION_ENTITIES,
     CONF_IMMICH_URL,
     CONF_IMMICH_API_KEY,
     CONF_IMMICH_ALBUM_IDS,
@@ -42,6 +41,15 @@ from .const import (
     SERVICE_SET_PHOTOS,
     SERVICE_SEND_NOTIFICATION,
     SERVICE_OPEN_CAMERA,
+    SERVICE_ADD_PILL,
+    SERVICE_REMOVE_PILL,
+    SERVICE_DISMISS_ALL_PILLS,
+    SERVICE_GET_PILLS,
+    SERVICE_GET_TIMERS,
+    SERVICE_DISMISS_ALL_TIMERS,
+    SERVICE_GET_ALARMS,
+    SERVICE_DISMISS_ALL_ALARMS,
+    SERVICE_CLOSE_CAMERA,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,14 +124,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     humidity_sensor = entry.options.get(CONF_HUMIDITY_SENSOR) or None
     auto_ambient_lux = entry.options.get(CONF_AUTO_AMBIENT_LUX) or None
     ma_media_player = entry.options.get(CONF_MA_MEDIA_PLAYER) or None
-    door_entities = entry.options.get(CONF_DOOR_ENTITIES, [])
-    motion_entities = entry.options.get(CONF_MOTION_ENTITIES, [])
     immich_url = entry.options.get(CONF_IMMICH_URL, "")
     immich_api_key = entry.options.get(CONF_IMMICH_API_KEY, "")
     immich_album_ids = entry.options.get(CONF_IMMICH_ALBUM_IDS, [])
     immich_refresh_interval = int(entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60))
     immich_batch_size = int(entry.options.get(CONF_IMMICH_BATCH_SIZE, 30))
     slideshow_interval = int(entry.options.get(CONF_SLIDESHOW_INTERVAL, 1)) * 60  # convert minutes → seconds
+
+    pill_store = Store(hass, 1, f"{DOMAIN}.{device_id}.pills")
+    persisted_pills = await pill_store.async_load() or {}
 
     hass.data.setdefault(DOMAIN, {})[device_id] = {
         "state": {},
@@ -132,9 +141,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "timers": {},
         "alarms": {},
         "photos": photo_urls,
+        "pills": persisted_pills,
+        "pill_timers": {},
+        "pill_store": pill_store,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, door_entities, motion_entities, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -327,6 +339,171 @@ def _register_services(hass: HomeAssistant) -> None:
         }),
     )
 
+    async def handle_close_camera(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        conn = get_connection(hass, device_id)
+        if not conn:
+            return
+        await conn.send_command({"close_camera": True})
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_CLOSE_CAMERA, handle_close_camera,
+        schema=vol.Schema({vol.Required("device_id"): cv.string}),
+    )
+
+    _pill_positions = ["under_clock", "top_left", "top_center", "top_right", "center_left", "center", "center_right", "bottom_left", "bottom_center", "bottom_right"]
+    _pill_icons = ["door", "motion", "warning", "info", "check", "alert", "camera", "lock", "temperature", "person"]
+    _device_id_schema = vol.Schema({vol.Required("device_id"): cv.string})
+
+    def _cancel_pill_timer(device_id: str, pill_id: str) -> None:
+        cancel = hass.data[DOMAIN][device_id]["pill_timers"].pop(pill_id, None)
+        if cancel:
+            cancel()
+
+    def _cancel_all_pill_timers(device_id: str) -> None:
+        for pill_id in list(hass.data[DOMAIN][device_id]["pill_timers"]):
+            _cancel_pill_timer(device_id, pill_id)
+
+    async def _save_pills(device_id: str) -> None:
+        await hass.data[DOMAIN][device_id]["pill_store"].async_save(
+            hass.data[DOMAIN][device_id]["pills"]
+        )
+
+    async def _remove_pill_and_push(device_id: str, pill_id: str) -> None:
+        hass.data[DOMAIN][device_id]["pills"].pop(pill_id, None)
+        hass.data[DOMAIN][device_id]["pill_timers"].pop(pill_id, None)
+        await _save_pills(device_id)
+        conn = get_connection(hass, device_id)
+        if conn:
+            await conn.send_command({"pills": list(hass.data[DOMAIN][device_id]["pills"].values())})
+
+    async def handle_add_pill(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        conn = get_connection(hass, device_id)
+        pill_id = call.data["pill_id"]
+        pill = {
+            "id": pill_id,
+            "text": call.data["text"],
+        }
+        if call.data.get("icon"):
+            pill["icon"] = call.data["icon"]
+        if call.data.get("color"):
+            pill["color"] = call.data["color"]
+        pill["position"] = call.data.get("position", "under_clock")
+        _cancel_pill_timer(device_id, pill_id)
+        hass.data[DOMAIN][device_id]["pills"][pill_id] = pill
+        await _save_pills(device_id)
+        duration = call.data.get("duration")
+        if duration:
+            @callback
+            def _auto_remove(_now, _device_id=device_id, _pill_id=pill_id):
+                hass.async_create_task(_remove_pill_and_push(_device_id, _pill_id))
+            hass.data[DOMAIN][device_id]["pill_timers"][pill_id] = async_call_later(hass, duration, _auto_remove)
+        if conn:
+            await conn.send_command({"pills": list(hass.data[DOMAIN][device_id]["pills"].values())})
+
+    async def handle_remove_pill(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        _cancel_pill_timer(device_id, call.data["pill_id"])
+        await _remove_pill_and_push(device_id, call.data["pill_id"])
+
+    async def handle_dismiss_all_pills(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        _cancel_all_pill_timers(device_id)
+        hass.data[DOMAIN][device_id]["pills"].clear()
+        await _save_pills(device_id)
+        conn = get_connection(hass, device_id)
+        if conn:
+            await conn.send_command({"pills": []})
+
+    async def handle_get_pills(call: ServiceCall) -> ServiceResponse:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return {"pills": []}
+        return {"pills": list(hass.data[DOMAIN][device_id]["pills"].values())}
+
+    async def handle_get_timers(call: ServiceCall) -> ServiceResponse:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return {"timers": []}
+        return {"timers": list(hass.data[DOMAIN][device_id]["timers"].values())}
+
+    async def handle_dismiss_all_timers(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        hass.data[DOMAIN][device_id]["timers"].clear()
+        conn = get_connection(hass, device_id)
+        if conn:
+            await conn.send_command({"timers": []})
+
+    async def handle_get_alarms(call: ServiceCall) -> ServiceResponse:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return {"alarms": []}
+        return {"alarms": list(hass.data[DOMAIN][device_id]["alarms"].values())}
+
+    async def handle_dismiss_all_alarms(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            return
+        hass.data[DOMAIN][device_id]["alarms"].clear()
+        conn = get_connection(hass, device_id)
+        if conn:
+            await conn.send_command({"alarms": []})
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_ADD_PILL, handle_add_pill,
+        schema=vol.Schema({
+            vol.Required("device_id"): cv.string,
+            vol.Required("pill_id"): cv.string,
+            vol.Required("text"): cv.string,
+            vol.Optional("icon"): vol.In(_pill_icons),
+            vol.Optional("color"): cv.string,
+            vol.Optional("position", default="under_clock"): vol.In(_pill_positions),
+            vol.Optional("duration"): vol.Coerce(int),
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_REMOVE_PILL, handle_remove_pill,
+        schema=vol.Schema({vol.Required("device_id"): cv.string, vol.Required("pill_id"): cv.string}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISMISS_ALL_PILLS, handle_dismiss_all_pills,
+        schema=_device_id_schema,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_GET_PILLS, handle_get_pills,
+        schema=_device_id_schema,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_GET_TIMERS, handle_get_timers,
+        schema=_device_id_schema,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISMISS_ALL_TIMERS, handle_dismiss_all_timers,
+        schema=_device_id_schema,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_GET_ALARMS, handle_get_alarms,
+        schema=_device_id_schema,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISMISS_ALL_ALARMS, handle_dismiss_all_alarms,
+        schema=_device_id_schema,
+    )
+
 
 def _parse_photo_urls(raw: str) -> list[str]:
     """Split comma- or newline-separated URL string into a clean list."""
@@ -349,7 +526,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, door_entities=None, motion_entities=None, immich_url="", immich_api_key="", immich_album_ids=None, immich_refresh_interval=60, immich_batch_size=30, slideshow_interval=60):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, immich_url="", immich_api_key="", immich_album_ids=None, immich_refresh_interval=60, immich_batch_size=30, slideshow_interval=60):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -362,8 +539,6 @@ class DeviceConnection:
         self._humidity_sensor = humidity_sensor
         self._auto_ambient_lux = auto_ambient_lux
         self._ma_media_player = ma_media_player
-        self._door_entities = door_entities or []
-        self._motion_entities = motion_entities or []
         self._auto_ambient_active: bool | None = None
         self._ws = None
         self._running = True
@@ -371,8 +546,6 @@ class DeviceConnection:
         self._unsub_weather = None
         self._unsub_climate = None
         self._unsub_ma = None
-        self._unsub_doors = None
-        self._unsub_motion = None
         self._unsub_immich_refresh = None
         self._camera_task = None
         self._focused_camera: str | None = None
@@ -430,23 +603,8 @@ class DeviceConnection:
                         )
                         await self._push_ma_track()
 
-                    # Subscribe to door sensor changes
-                    if self._door_entities:
-                        self._unsub_doors = async_track_state_change_event(
-                            self._hass,
-                            self._door_entities,
-                            self._on_door_change,
-                        )
-                        await self._push_doors()
-
-                    # Subscribe to motion sensor changes
-                    if self._motion_entities:
-                        self._unsub_motion = async_track_state_change_event(
-                            self._hass,
-                            self._motion_entities,
-                            self._on_motion_change,
-                        )
-                        await self._push_motion()
+                    # Push any persisted pills
+                    await self._push_pills()
 
                     # Send Immich config + push photos and timers/alarms
                     if self._immich_provider:
@@ -485,12 +643,6 @@ class DeviceConnection:
                 if self._unsub_ma:
                     self._unsub_ma()
                     self._unsub_ma = None
-                if self._unsub_doors:
-                    self._unsub_doors()
-                    self._unsub_doors = None
-                if self._unsub_motion:
-                    self._unsub_motion()
-                    self._unsub_motion = None
                 if self._unsub_immich_refresh:
                     self._unsub_immich_refresh()
                     self._unsub_immich_refresh = None
@@ -667,39 +819,11 @@ class DeviceConnection:
         """Called when the MA media player entity state changes."""
         self._hass.async_create_task(self._push_ma_track())
 
-    @callback
-    def _on_door_change(self, event) -> None:
-        """Called when a door sensor state changes."""
-        self._hass.async_create_task(self._push_doors())
-
-    async def _push_doors(self):
+    async def _push_pills(self):
         if not self._ws:
             return
-        doors = []
-        for entity_id in self._door_entities:
-            state = self._hass.states.get(entity_id)
-            if state is None:
-                continue
-            name = state.attributes.get("friendly_name", entity_id)
-            doors.append({"id": entity_id, "name": name, "open": state.state == "on"})
-        await self.send_command({"doors": doors})
-
-    @callback
-    def _on_motion_change(self, event) -> None:
-        """Called when a motion sensor state changes."""
-        self._hass.async_create_task(self._push_motion())
-
-    async def _push_motion(self):
-        if not self._ws:
-            return
-        motions = []
-        for entity_id in self._motion_entities:
-            state = self._hass.states.get(entity_id)
-            if state is None:
-                continue
-            name = state.attributes.get("friendly_name", entity_id)
-            motions.append({"id": entity_id, "name": name, "detected": state.state == "on"})
-        await self.send_command({"motions": motions})
+        pills = list(self._hass.data[DOMAIN][self._device_id]["pills"].values())
+        await self.send_command({"pills": pills})
 
     async def _handle_shuffle_toggle(self) -> None:
         """Toggle shuffle on the configured MA media player."""

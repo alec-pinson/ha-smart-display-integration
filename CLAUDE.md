@@ -28,13 +28,13 @@ async_setup_entry()
                   push weather + photos (static + Immich merged) + timers/alarms + climate
                   start camera loop
                   subscribe to MA media player entity if configured + push current track
-                  subscribe to door/motion entities if configured + push initial state
+                  push persisted pills (loaded from Store on startup)
     → _listen(): handles "state" messages → dispatcher_send → entities update
                  detects focused_camera changes → starts/stops _focused_camera_loop
                  handles "event" messages → notification_action HA event,
                    climate_set_temperature/hvac_mode → climate service calls,
                    media_command → ha_smart_display_media_command HA event + forward next/previous to MA entity
-    → on disconnect: set unavailable, unsubscribe weather/MA/doors/motion/immich_refresh, cancel tasks, retry with backoff
+    → on disconnect: set unavailable, unsubscribe weather/MA/immich_refresh, cancel tasks, retry with backoff
 ```
 
 ## Camera loops

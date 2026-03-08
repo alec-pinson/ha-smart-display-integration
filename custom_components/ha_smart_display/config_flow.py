@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_DOOR_ENTITIES, CONF_MOTION_ENTITIES, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -206,12 +206,6 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_MA_MEDIA_PLAYER): selector.selector({
                 "entity": {"domain": "media_player"}
             }),
-            vol.Optional(CONF_DOOR_ENTITIES): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
-            ),
-            vol.Optional(CONF_MOTION_ENTITIES): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
-            ),
             vol.Optional(CONF_IMMICH_URL): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
             ),
@@ -242,8 +236,6 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                     CONF_CAMERA_ENTITIES: self._config_entry.options.get(CONF_CAMERA_ENTITIES, []),
                     CONF_AUTO_AMBIENT_LUX: self._config_entry.options.get(CONF_AUTO_AMBIENT_LUX),
                     CONF_MA_MEDIA_PLAYER: self._config_entry.options.get(CONF_MA_MEDIA_PLAYER, ""),
-                    CONF_DOOR_ENTITIES: self._config_entry.options.get(CONF_DOOR_ENTITIES, []),
-                    CONF_MOTION_ENTITIES: self._config_entry.options.get(CONF_MOTION_ENTITIES, []),
                     CONF_IMMICH_URL: self._config_entry.options.get(CONF_IMMICH_URL, ""),
                     CONF_IMMICH_API_KEY: self._config_entry.options.get(CONF_IMMICH_API_KEY, ""),
                     CONF_IMMICH_REFRESH_INTERVAL: self._config_entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60),
