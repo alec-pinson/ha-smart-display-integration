@@ -16,6 +16,7 @@ async def async_setup_entry(
         WakeWordCountSensor(hass, entry),
         LuxSensor(hass, entry),
         MemorySensor(hass, entry),
+        ThreadCountSensor(hass, entry),
     ])
 
 
@@ -83,6 +84,7 @@ class MemorySensor(HaSmartDisplayEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _attr_suggested_display_precision = 0
 
     @property
@@ -92,6 +94,28 @@ class MemorySensor(HaSmartDisplayEntity, SensorEntity):
     @property
     def native_value(self):
         val = self._current_state().get("memory_mb")
+        if val is None:
+            return None
+        return int(val)
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+
+class ThreadCountSensor(HaSmartDisplayEntity, SensorEntity):
+    _attr_name = "Thread Count"
+    _attr_icon = "mdi:graph-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    @property
+    def entity_description_key(self):
+        return "thread_count"
+
+    @property
+    def native_value(self):
+        val = self._current_state().get("thread_count")
         if val is None:
             return None
         return int(val)
