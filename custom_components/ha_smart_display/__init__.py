@@ -546,6 +546,9 @@ class DeviceConnection:
         self._unsub_weather = None
         self._unsub_climate = None
         self._unsub_ma = None
+        self._ma_push_task = None
+        self._last_ma_title: str | None = None
+        self._last_ma_artist: str | None = None
         self._unsub_immich_refresh = None
         self._camera_task = None
         self._focused_camera: str | None = None
@@ -601,6 +604,9 @@ class DeviceConnection:
                             [self._ma_media_player],
                             self._on_ma_state_change,
                         )
+                        # Reset cache so first push on connect always goes through
+                        self._last_ma_title = None
+                        self._last_ma_artist = None
                         await self._push_ma_track()
 
                     # Push any persisted pills
@@ -816,8 +822,20 @@ class DeviceConnection:
 
     @callback
     def _on_ma_state_change(self, event) -> None:
-        """Called when the MA media player entity state changes."""
-        self._hass.async_create_task(self._push_ma_track())
+        """Called when the MA media player entity state changes.
+        Debounced: MA fires state changes for position updates and intermediate
+        states during track transitions. Only push after 500ms of silence so
+        the metadata has settled before sending to the device."""
+        if self._ma_push_task and not self._ma_push_task.done():
+            self._ma_push_task.cancel()
+        self._ma_push_task = self._hass.async_create_task(
+            self._debounced_push_ma_track()
+        )
+
+    async def _debounced_push_ma_track(self):
+        import asyncio
+        await asyncio.sleep(2.0)
+        await self._push_ma_track()
 
     async def _push_pills(self):
         if not self._ws:
@@ -922,6 +940,15 @@ class DeviceConnection:
         state = self._hass.states.get(self._ma_media_player)
         if not state or state.state in ("unavailable", "unknown", "idle", "off"):
             return
+        title = state.attributes.get("media_title") or ""
+        artist = state.attributes.get("media_artist")
+        # Skip push if metadata hasn't changed — avoids re-sending during
+        # position-only MA state changes and brief intermediate states during
+        # track transitions where title hasn't settled to the new track yet.
+        if title == self._last_ma_title and artist == self._last_ma_artist and title:
+            return
+        self._last_ma_title = title
+        self._last_ma_artist = artist
         art_url = state.attributes.get("entity_picture")
         # Resolve relative art URL to absolute so the device can fetch it
         if art_url and art_url.startswith("/"):
@@ -932,14 +959,12 @@ class DeviceConnection:
             except Exception as e:
                 _LOGGER.debug("ha_smart_display: could not resolve art URL: %s", e)
         duration = state.attributes.get("media_duration") or 0
-        position = state.attributes.get("media_position") or 0
         track = {
-            "title": state.attributes.get("media_title") or "",
-            "artist": state.attributes.get("media_artist"),
+            "title": title,
+            "artist": artist,
             "album": state.attributes.get("media_album_name"),
             "art_url": art_url,
             "duration_ms": int(duration * 1000),
-            "position_ms": int(position * 1000),
         }
         shuffle = bool(state.attributes.get("shuffle", False))
         await self.send_command({"media_track": track, "shuffle_enabled": shuffle})

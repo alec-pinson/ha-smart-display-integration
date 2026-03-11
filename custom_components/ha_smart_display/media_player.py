@@ -199,9 +199,6 @@ class HaSmartDisplayMediaPlayer(HaSmartDisplayEntity, MediaPlayerEntity):
             }
         }
         self._send_command(payload)
-        # Immediately push current MA track so metadata arrives in the same burst
-        if conn and getattr(conn, "_ma_media_player", None):
-            self.hass.async_create_task(conn._push_ma_track())
 
     async def async_media_pause(self) -> None:
         self._send_command({"media_command": "pause"})
