@@ -34,7 +34,6 @@ from .const import (
     CONF_SLIDESHOW_INTERVAL,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
-    SIGNAL_ASSIST_STATE_UPDATED,
     SERVICE_SET_TIMER,
     SERVICE_DISMISS_TIMER,
     SERVICE_SET_ALARM,
@@ -55,7 +54,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player"]
+PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite"]
 
 
 class ImmichProvider:
@@ -162,7 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "pills": persisted_pills,
         "pill_timers": {},
         "pill_store": pill_store,
-        "assist_state": "idle",
+        "satellite_entity": None,
     }
 
     connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval)
@@ -745,11 +744,16 @@ class DeviceConnection:
             elif msg_type == "event":
                 if msg.get("event") == "voice_command_audio":
                     audio_b64 = msg.get("audio")
-                    if audio_b64:
+                    satellite = self._hass.data.get(DOMAIN, {}).get(self._device_id, {}).get("satellite_entity")
+                    if audio_b64 and satellite:
                         audio_bytes = base64.b64decode(audio_b64)
                         self._hass.async_create_task(
-                            self._run_voice_pipeline(audio_bytes)
+                            self._run_pipeline_via_satellite(satellite, audio_bytes)
                         )
+                elif msg.get("event") == "tts_finished":
+                    satellite = self._hass.data.get(DOMAIN, {}).get(self._device_id, {}).get("satellite_entity")
+                    if satellite:
+                        satellite.on_tts_finished()
                 elif msg.get("event") == "notification_action":
                     self._hass.bus.async_fire(
                         f"{DOMAIN}_notification_action",
@@ -1184,104 +1188,14 @@ class DeviceConnection:
         alarms = list(data.get("alarms", {}).values())
         await self.send_command({"timers": timers, "alarms": alarms})
 
-    async def _run_voice_pipeline(self, audio_bytes: bytes) -> None:
-        """Run HA Assist pipeline on device-recorded audio and send back the response."""
-        try:
-            from homeassistant.components.assist_pipeline import (
-                async_pipeline_from_audio_stream,
-                PipelineEvent,
-                PipelineEventType,
-                PipelineStage,
-            )
-            from homeassistant.components.stt import (
-                SpeechMetadata,
-                AudioBitRates,
-                AudioChannels,
-                AudioCodecs,
-                AudioFormats,
-                AudioSampleRates,
-            )
-            from homeassistant.core import Context
-        except ImportError as e:
-            _LOGGER.warning("ha_smart_display: assist_pipeline not available: %s", e)
-            return
+    async def _run_pipeline_via_satellite(self, satellite, audio_bytes: bytes) -> None:
+        """Run HA Assist pipeline via the AssistSatelliteEntity."""
+        async def audio_stream():
+            chunk_size = 8000
+            for i in range(0, len(audio_bytes), chunk_size):
+                yield audio_bytes[i:i + chunk_size]
 
-        self._set_assist_state("listening")
-        try:
-            result: dict = {}
-
-            def event_callback(event: PipelineEvent) -> None:
-                if event.type == PipelineEventType.STT_END:
-                    stt_text = event.data.get("stt_output", {}).get("text", "") if event.data else ""
-                    _LOGGER.debug("ha_smart_display: STT result: %r", stt_text)
-                    self._set_assist_state("processing")
-                elif event.type == PipelineEventType.INTENT_END:
-                    # Primary source for response text — always fires even when TTS doesn't
-                    try:
-                        result["text"] = (
-                            event.data["intent_output"]["response"]["speech"]["plain"]["speech"]
-                            if event.data else ""
-                        )
-                    except (KeyError, TypeError):
-                        pass
-                    self._set_assist_state("responding")
-                elif event.type == PipelineEventType.TTS_END:
-                    result["tts_url"] = (
-                        event.data.get("tts_output", {}).get("url") if event.data else None
-                    )
-                elif event.type == PipelineEventType.ERROR:
-                    msg = event.data.get("message", "Unknown error") if event.data else "error"
-                    _LOGGER.warning("ha_smart_display: voice pipeline error: %s", msg)
-
-            async def audio_stream():
-                chunk_size = 8000  # ~250 ms at 16 kHz 16-bit
-                for i in range(0, len(audio_bytes), chunk_size):
-                    yield audio_bytes[i : i + chunk_size]
-
-            try:
-                await async_pipeline_from_audio_stream(
-                    self._hass,
-                    context=Context(),
-                    event_callback=event_callback,
-                    stt_metadata=SpeechMetadata(
-                        language=self._hass.config.language,
-                        format=AudioFormats.WAV,
-                        codec=AudioCodecs.PCM,
-                        bit_rate=AudioBitRates.BITRATE_16,
-                        sample_rate=AudioSampleRates.SAMPLERATE_16000,
-                        channel=AudioChannels.CHANNEL_MONO,
-                    ),
-                    stt_stream=audio_stream(),
-                    pipeline_id=None,
-                    start_stage=PipelineStage.STT,
-                    end_stage=PipelineStage.TTS,
-                )
-            except Exception as e:
-                _LOGGER.warning("ha_smart_display: voice pipeline failed: %s", e)
-                return
-
-            response_text = result.get("text", "")
-            _LOGGER.debug("ha_smart_display: voice pipeline result: %r", response_text)
-
-            # Resolve relative tts_url to a full URL the device can fetch directly
-            tts_url = result.get("tts_url")
-            if tts_url and tts_url.startswith("/"):
-                try:
-                    from homeassistant.helpers.network import get_url
-                    base_url = get_url(self._hass, allow_internal=True, prefer_external=False)
-                    tts_url = f"{base_url.rstrip('/')}{tts_url}"
-                except Exception as e:
-                    _LOGGER.warning("ha_smart_display: could not resolve TTS URL: %s", e)
-                    tts_url = None
-
-            await self.send_command({
-                "voice_response": {
-                    "text": response_text,
-                    "tts_url": tts_url,
-                }
-            })
-        finally:
-            self._set_assist_state("idle")
+        await satellite.async_accept_pipeline_from_satellite(audio_stream=audio_stream())
 
     def _set_available(self, available: bool):
         data = self._hass.data.get(DOMAIN, {}).get(self._device_id)
@@ -1291,16 +1205,6 @@ class DeviceConnection:
                 self._hass,
                 SIGNAL_AVAILABILITY_UPDATED.format(device_id=self._device_id),
                 available,
-            )
-
-    def _set_assist_state(self, state: str) -> None:
-        data = self._hass.data.get(DOMAIN, {}).get(self._device_id)
-        if data is not None:
-            data["assist_state"] = state
-            async_dispatcher_send(
-                self._hass,
-                SIGNAL_ASSIST_STATE_UPDATED.format(device_id=self._device_id),
-                state,
             )
 
     async def send_command(self, payload: dict):
