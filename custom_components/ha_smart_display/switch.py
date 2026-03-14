@@ -1,5 +1,6 @@
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -17,6 +18,7 @@ async def async_setup_entry(
         SirenSoundingSwitch(hass, entry),
         AutoBrightnessSwitch(hass, entry),
         WakeWordSoundSwitch(hass, entry),
+        MuteMicrophoneSwitch(hass, entry),
     ])
 
 
@@ -89,6 +91,7 @@ class AmbientActiveSwitch(HaSmartDisplayEntity, SwitchEntity):
 class AutoBrightnessSwitch(HaSmartDisplayEntity, SwitchEntity):
     _attr_name = "Auto Brightness"
     _attr_icon = "mdi:brightness-auto"
+    _attr_entity_category = EntityCategory.CONFIG
 
     @property
     def entity_description_key(self):
@@ -138,6 +141,7 @@ class AlarmSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):
 class WakeWordSoundSwitch(HaSmartDisplayEntity, SwitchEntity):
     _attr_name = "Wake Word Sound"
     _attr_icon = "mdi:music-note"
+    _attr_entity_category = EntityCategory.CONFIG
 
     @property
     def entity_description_key(self):
@@ -155,6 +159,29 @@ class WakeWordSoundSwitch(HaSmartDisplayEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._send_command({"wake_word_sound": False})
+
+
+class MuteMicrophoneSwitch(HaSmartDisplayEntity, SwitchEntity):
+    _attr_name = "Mute Microphone"
+    _attr_icon = "mdi:microphone-off"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def entity_description_key(self):
+        return "microphone_muted"
+
+    @property
+    def is_on(self):
+        return self._current_state().get("microphone_muted", False)
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs):
+        self._send_command({"microphone_muted": True})
+
+    async def async_turn_off(self, **kwargs):
+        self._send_command({"microphone_muted": False})
 
 
 class SirenSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):

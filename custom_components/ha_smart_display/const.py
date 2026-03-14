@@ -29,6 +29,7 @@ AMBIENT_MODE_OPTIONS = ["clock", "weather", "cameras", "music"]
 # Dispatcher signals
 SIGNAL_STATE_UPDATED = f"{DOMAIN}_state_updated_{{device_id}}"
 SIGNAL_AVAILABILITY_UPDATED = f"{DOMAIN}_availability_updated_{{device_id}}"
+SIGNAL_ASSIST_STATE_UPDATED = f"{DOMAIN}_assist_state_updated_{{device_id}}"
 
 # Media player states (as reported by device)
 MEDIA_STATE_IDLE = "idle"

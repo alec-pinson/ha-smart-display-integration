@@ -1,5 +1,6 @@
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -22,6 +23,7 @@ class WakeWordSelect(HaSmartDisplayEntity, SelectEntity):
     _attr_name = "Wake Word"
     _attr_icon = "mdi:microphone"
     _attr_options = WAKE_WORD_OPTIONS
+    _attr_entity_category = EntityCategory.CONFIG
 
     @property
     def entity_description_key(self):
@@ -42,6 +44,7 @@ class WakeWordSensitivitySelect(HaSmartDisplayEntity, SelectEntity):
     _attr_name = "Wake Word Sensitivity"
     _attr_icon = "mdi:microphone-settings"
     _attr_options = WAKE_WORD_SENSITIVITY_OPTIONS
+    _attr_entity_category = EntityCategory.CONFIG
 
     @property
     def entity_description_key(self):
@@ -62,6 +65,7 @@ class VadSensitivitySelect(HaSmartDisplayEntity, SelectEntity):
     _attr_name = "Finished Speaking Detection"
     _attr_icon = "mdi:waveform"
     _attr_options = VAD_SENSITIVITY_OPTIONS
+    _attr_entity_category = EntityCategory.CONFIG
 
     @property
     def entity_description_key(self):

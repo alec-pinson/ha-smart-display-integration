@@ -1,10 +1,12 @@
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import LIGHT_LUX, UnitOfInformation
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN, SIGNAL_ASSIST_STATE_UPDATED
 from .entity_base import HaSmartDisplayEntity
 
 
@@ -17,6 +19,7 @@ async def async_setup_entry(
         LuxSensor(hass, entry),
         MemorySensor(hass, entry),
         ThreadCountSensor(hass, entry),
+        AssistStateSensor(hass, entry),
     ])
 
 
@@ -25,6 +28,7 @@ class UptimeSensor(HaSmartDisplayEntity, SensorEntity):
     _attr_icon = "mdi:timer-outline"
     _attr_native_unit_of_measurement = "s"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def entity_description_key(self):
@@ -42,6 +46,7 @@ class WakeWordCountSensor(HaSmartDisplayEntity, SensorEntity):
     _attr_name = "Wake Word Count"
     _attr_icon = "mdi:counter"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def entity_description_key(self):
@@ -121,4 +126,39 @@ class ThreadCountSensor(HaSmartDisplayEntity, SensorEntity):
         return int(val)
 
     def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+
+class AssistStateSensor(HaSmartDisplayEntity, SensorEntity):
+    _attr_name = "Assist"
+    _attr_icon = "mdi:microphone-message"
+
+    @property
+    def entity_description_key(self):
+        return "assist_state"
+
+    @property
+    def native_value(self) -> str:
+        return (
+            self.hass.data
+            .get(DOMAIN, {})
+            .get(self._device_id, {})
+            .get("assist_state", "idle")
+        )
+
+    def _handle_state_update(self, payload) -> None:
+        pass  # driven by SIGNAL_ASSIST_STATE_UPDATED
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_ASSIST_STATE_UPDATED.format(device_id=self._device_id),
+                self._on_assist_state_updated,
+            )
+        )
+
+    @callback
+    def _on_assist_state_updated(self, state: str) -> None:
         self.async_write_ha_state()
