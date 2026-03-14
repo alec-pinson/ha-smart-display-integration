@@ -13,6 +13,7 @@ async def async_setup_entry(
         RestartButton(hass, entry),
         NextPhotoButton(hass, entry),
         PreviousPhotoButton(hass, entry),
+        WakeForVoiceButton(hass, entry),
     ])
 
 
@@ -59,3 +60,18 @@ class PreviousPhotoButton(HaSmartDisplayEntity, ButtonEntity):
 
     async def async_press(self):
         self._send_command({"photo_command": "previous"})
+
+
+class WakeForVoiceButton(HaSmartDisplayEntity, ButtonEntity):
+    _attr_name = "Wake for Voice"
+    _attr_icon = "mdi:microphone"
+
+    @property
+    def entity_description_key(self):
+        return "wake_for_voice"
+
+    def _handle_state_update(self, payload):
+        pass
+
+    async def async_press(self):
+        self._send_command({"action": "wake_for_voice"})
