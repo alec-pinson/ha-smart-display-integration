@@ -1176,12 +1176,14 @@ class DeviceConnection:
     async def _camera_loop(self):
         """Push camera snapshots while connected — 10s when visible, 60s otherwise."""
         while self._ws is not None:
-            await self._push_camera_snapshots()
             device_state = self._hass.data[DOMAIN].get(self._device_id, {}).get("state", {})
+            ambient_active = device_state.get("ambient_active", False)
             cameras_visible = (
                 device_state.get("ambient_mode") == "cameras"
-                and not device_state.get("ambient_active", False)
+                and not ambient_active
             )
+            if not ambient_active:
+                await self._push_camera_snapshots()
             await asyncio.sleep(10 if cameras_visible else 60)
 
     async def _push_camera_snapshots(self):
