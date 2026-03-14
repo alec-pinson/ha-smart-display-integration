@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT, IMMICH_RECENT_PHOTOS_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,7 +146,8 @@ async def _fetch_immich_albums(url: str, api_key: str) -> list[dict]:
             if resp.status != 200:
                 raise Exception(f"HTTP {resp.status}")
             data = await resp.json()
-            return [{"id": a["id"], "albumName": a["albumName"]} for a in data if "id" in a]
+            result = [{"id": a["id"], "albumName": a["albumName"]} for a in data if "id" in a]
+            return [{"id": IMMICH_RECENT_PHOTOS_ID, "albumName": "Recent Photos"}] + result
 
 
 class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):

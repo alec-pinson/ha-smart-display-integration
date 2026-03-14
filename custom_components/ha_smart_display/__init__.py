@@ -32,6 +32,7 @@ from .const import (
     CONF_IMMICH_REFRESH_INTERVAL,
     CONF_IMMICH_BATCH_SIZE,
     CONF_SLIDESHOW_INTERVAL,
+    IMMICH_RECENT_PHOTOS_ID,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -69,11 +70,47 @@ class ImmichProvider:
     async def fetch_photos(self) -> list[dict]:
         """Return a shuffled batch of photo dicts (url, album, location, date) from the configured albums."""
         import aiohttp
-        from datetime import datetime
         assets: list[dict] = []  # {id, album, location, date}
         try:
             async with aiohttp.ClientSession(headers={"x-api-key": self._api_key}) as session:
+                if IMMICH_RECENT_PHOTOS_ID in self._album_ids:
+                    try:
+                        async with session.get(
+                            f"{self._url}/api/assets",
+                            params={"size": self._batch_size, "page": 1},
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                for asset in (data if isinstance(data, list) else data.get("assets", [])):
+                                    if asset.get("type") == "IMAGE":
+                                        exif = asset.get("exifInfo") or {}
+                                        city = exif.get("city") or ""
+                                        country = exif.get("country") or ""
+                                        location = city or country or None
+                                        date_str = (
+                                            (exif.get("dateTimeOriginal") or "").split(".")[0]
+                                            or (asset.get("localDateTime") or "").split(".")[0]
+                                            or (asset.get("fileCreatedAt") or "").split(".")[0]
+                                        )
+                                        date_display = None
+                                        if date_str:
+                                            try:
+                                                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                                                date_display = dt.strftime("%B %Y")
+                                            except Exception:
+                                                pass
+                                        assets.append({
+                                            "id": asset["id"],
+                                            "album": None,
+                                            "location": location,
+                                            "date": date_display,
+                                        })
+                    except Exception as e:
+                        _LOGGER.debug("ha_smart_display: Immich recent photos fetch failed: %s", e)
                 for album_id in self._album_ids:
+                    if album_id == IMMICH_RECENT_PHOTOS_ID:
+                        continue
                     try:
                         async with session.get(
                             f"{self._url}/api/albums/{album_id}",

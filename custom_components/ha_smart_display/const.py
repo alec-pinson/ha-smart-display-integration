@@ -17,6 +17,7 @@ CONF_IMMICH_ALBUM_IDS = "immich_album_ids"
 CONF_IMMICH_REFRESH_INTERVAL = "immich_refresh_interval"  # minutes, default 60
 CONF_IMMICH_BATCH_SIZE = "immich_batch_size"              # photos per refresh, default 30
 CONF_SLIDESHOW_INTERVAL = "slideshow_interval"            # minutes, default 1
+IMMICH_RECENT_PHOTOS_ID = "__recent__"
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
