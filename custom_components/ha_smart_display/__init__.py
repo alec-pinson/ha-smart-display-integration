@@ -67,9 +67,10 @@ class ImmichProvider:
         self._batch_size = batch_size
 
     async def fetch_photos(self) -> list[dict]:
-        """Return a shuffled batch of photo dicts (url, album, location) from the configured albums."""
+        """Return a shuffled batch of photo dicts (url, album, location, date) from the configured albums."""
         import aiohttp
-        assets: list[dict] = []  # {id, album, location}
+        from datetime import datetime
+        assets: list[dict] = []  # {id, album, location, date}
         try:
             async with aiohttp.ClientSession(headers={"x-api-key": self._api_key}) as session:
                 for album_id in self._album_ids:
@@ -90,10 +91,25 @@ class ImmichProvider:
                                         # Omit location if it already appears in the album name
                                         if location and location.lower() in album_name.lower():
                                             location = None
+                                        date_str = (
+                                            (exif.get("dateTimeOriginal") or "").split(".")[0]
+                                            or (asset.get("localDateTime") or "").split(".")[0]
+                                            or (asset.get("fileCreatedAt") or "").split(".")[0]
+                                        )
+                                        date_display = None
+                                        if date_str:
+                                            try:
+                                                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                                                year_str = str(dt.year)
+                                                if year_str not in album_name:
+                                                    date_display = dt.strftime("%B %Y")
+                                            except Exception:
+                                                pass
                                         assets.append({
                                             "id": asset["id"],
                                             "album": album_name or None,
                                             "location": location,
+                                            "date": date_display,
                                         })
                     except Exception as e:
                         _LOGGER.debug("ha_smart_display: Immich album %s fetch failed: %s", album_id, e)
@@ -107,6 +123,7 @@ class ImmichProvider:
                 "url": f"{self._url}/api/assets/{a['id']}/thumbnail?size=preview",
                 "album": a["album"],
                 "location": a["location"],
+                "date": a["date"],
             }
             for a in batch
         ]
@@ -329,13 +346,17 @@ def _register_services(hass: HomeAssistant) -> None:
         entity_id = call.data["camera_entity"]
         state = hass.states.get(entity_id)
         name = state.attributes.get("friendly_name", entity_id) if state else entity_id
-        await conn.send_command({"open_camera": {"id": entity_id, "name": name}})
+        payload: dict = {"id": entity_id, "name": name}
+        if "duration" in call.data:
+            payload["duration"] = call.data["duration"]
+        await conn.send_command({"open_camera": payload})
 
     hass.services.async_register(
         DOMAIN, SERVICE_OPEN_CAMERA, handle_open_camera,
         schema=vol.Schema({
             vol.Required("device_id"): cv.string,
             vol.Required("camera_entity"): cv.entity_id,
+            vol.Optional("duration"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         }),
     )
 
