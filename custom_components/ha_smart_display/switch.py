@@ -14,7 +14,9 @@ async def async_setup_entry(
         ScreenOnSwitch(hass, entry),
         AmbientActiveSwitch(hass, entry),
         AlarmSoundingSwitch(hass, entry),
+        SirenSoundingSwitch(hass, entry),
         AutoBrightnessSwitch(hass, entry),
+        WakeWordSoundSwitch(hass, entry),
     ])
 
 
@@ -131,3 +133,52 @@ class AlarmSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):
         self._is_on = False
         self.async_write_ha_state()
         self._send_command({"alarm_sounding": False})
+
+
+class WakeWordSoundSwitch(HaSmartDisplayEntity, SwitchEntity):
+    _attr_name = "Wake Word Sound"
+    _attr_icon = "mdi:music-note"
+
+    @property
+    def entity_description_key(self):
+        return "wake_word_sound"
+
+    @property
+    def is_on(self):
+        return self._current_state().get("wake_word_sound", True)
+
+    def _handle_state_update(self, payload):
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs):
+        self._send_command({"wake_word_sound": True})
+
+    async def async_turn_off(self, **kwargs):
+        self._send_command({"wake_word_sound": False})
+
+
+class SirenSoundingSwitch(HaSmartDisplayEntity, SwitchEntity):
+    _attr_name = "Siren"
+    _attr_icon = "mdi:alarm-light"
+    _is_on: bool = False
+
+    @property
+    def entity_description_key(self):
+        return "siren_sounding"
+
+    @property
+    def is_on(self):
+        return self._is_on
+
+    def _handle_state_update(self, payload):
+        pass  # state is driven by HA, not reported by device
+
+    async def async_turn_on(self, **kwargs):
+        self._is_on = True
+        self.async_write_ha_state()
+        self._send_command({"siren_sounding": True})
+
+    async def async_turn_off(self, **kwargs):
+        self._is_on = False
+        self.async_write_ha_state()
+        self._send_command({"siren_sounding": False})

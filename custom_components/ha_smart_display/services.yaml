@@ -225,6 +225,13 @@ send_notification:
         - Dismiss
       selector:
         object:
+    sound:
+      name: Sound
+      description: Whether to play a notification sound on the device. Defaults to true.
+      required: false
+      default: true
+      selector:
+        boolean:
 
 show_camera_stream:
   name: Show Camera Stream

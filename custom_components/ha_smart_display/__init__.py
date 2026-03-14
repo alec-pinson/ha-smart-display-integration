@@ -311,6 +311,7 @@ def _register_services(hass: HomeAssistant) -> None:
             "style": call.data.get("style", "dialog"),
             "tap_action": call.data.get("tap_action"),
             "position": call.data.get("position", "center"),
+            "sound": call.data.get("sound", True),
         }
         await conn.send_command({"notification": notification})
 
@@ -333,6 +334,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("style", default="dialog"): vol.In(["dialog", "toast", "banner"]),
             vol.Optional("tap_action"): cv.string,
             vol.Optional("position", default="center"): vol.In(["center", "top_left", "top_center", "top_right", "bottom_left", "bottom_center", "bottom_right"]),
+            vol.Optional("sound", default=True): cv.boolean,
         }),
     )
 
