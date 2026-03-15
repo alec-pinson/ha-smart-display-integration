@@ -67,6 +67,32 @@ class ImmichProvider:
         self._album_ids = album_ids
         self._batch_size = batch_size
 
+    @staticmethod
+    def _parse_asset_meta(asset: dict, album_name: str | None = None) -> tuple[str | None, str | None]:
+        """Extract location and date_display from an Immich asset's EXIF data."""
+        exif = asset.get("exifInfo") or {}
+        city = exif.get("city") or ""
+        country = exif.get("country") or ""
+        location = city or country or None
+        if album_name and location and location.lower() in album_name.lower():
+            location = None
+        date_str = (
+            (exif.get("dateTimeOriginal") or "").split(".")[0]
+            or (asset.get("localDateTime") or "").split(".")[0]
+            or (asset.get("fileCreatedAt") or "").split(".")[0]
+        )
+        date_display = None
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                if album_name and str(dt.year) in album_name:
+                    date_display = None
+                else:
+                    date_display = dt.strftime("%B %Y")
+            except Exception:
+                pass
+        return location, date_display
+
     async def fetch_photos(self) -> list[dict]:
         """Return a shuffled batch of photo dicts (url, album, location, date) from the configured albums."""
         import aiohttp
@@ -84,22 +110,7 @@ class ImmichProvider:
                                 data = await resp.json()
                                 for asset in (data if isinstance(data, list) else data.get("assets", [])):
                                     if asset.get("type") == "IMAGE":
-                                        exif = asset.get("exifInfo") or {}
-                                        city = exif.get("city") or ""
-                                        country = exif.get("country") or ""
-                                        location = city or country or None
-                                        date_str = (
-                                            (exif.get("dateTimeOriginal") or "").split(".")[0]
-                                            or (asset.get("localDateTime") or "").split(".")[0]
-                                            or (asset.get("fileCreatedAt") or "").split(".")[0]
-                                        )
-                                        date_display = None
-                                        if date_str:
-                                            try:
-                                                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                                                date_display = dt.strftime("%B %Y")
-                                            except Exception:
-                                                pass
+                                        location, date_display = self._parse_asset_meta(asset)
                                         assets.append({
                                             "id": asset["id"],
                                             "album": None,
@@ -121,27 +132,7 @@ class ImmichProvider:
                                 album_name = data.get("albumName") or data.get("name") or ""
                                 for asset in data.get("assets", []):
                                     if asset.get("type") == "IMAGE":
-                                        exif = asset.get("exifInfo") or {}
-                                        city = exif.get("city") or ""
-                                        country = exif.get("country") or ""
-                                        location = city or country or None
-                                        # Omit location if it already appears in the album name
-                                        if location and location.lower() in album_name.lower():
-                                            location = None
-                                        date_str = (
-                                            (exif.get("dateTimeOriginal") or "").split(".")[0]
-                                            or (asset.get("localDateTime") or "").split(".")[0]
-                                            or (asset.get("fileCreatedAt") or "").split(".")[0]
-                                        )
-                                        date_display = None
-                                        if date_str:
-                                            try:
-                                                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                                                year_str = str(dt.year)
-                                                if year_str not in album_name:
-                                                    date_display = dt.strftime("%B %Y")
-                                            except Exception:
-                                                pass
+                                        location, date_display = self._parse_asset_meta(asset, album_name)
                                         assets.append({
                                             "id": asset["id"],
                                             "album": album_name or None,
@@ -845,20 +836,24 @@ class DeviceConnection:
                         if climate_state and climate_state.state == "heat_cool":
                             # heat_cool mode requires target_temp_high + target_temp_low
                             attrs = climate_state.attributes
+                            min_t = attrs.get("min_temp", 7)
+                            max_t = attrs.get("max_temp", 35)
                             current_high = attrs.get("target_temp_high")
                             current_low = attrs.get("target_temp_low")
                             if current_high is not None and current_low is not None:
                                 half_spread = (current_high - current_low) / 2
+                                new_high = max(min_t, min(max_t, temperature + half_spread))
+                                new_low = max(min_t, min(max_t, temperature - half_spread))
                                 service_data = {
                                     "entity_id": self._climate_entity,
-                                    "target_temp_high": temperature + half_spread,
-                                    "target_temp_low": temperature - half_spread,
+                                    "target_temp_high": new_high,
+                                    "target_temp_low": new_low,
                                 }
                             else:
                                 service_data = {
                                     "entity_id": self._climate_entity,
-                                    "target_temp_high": temperature + 1,
-                                    "target_temp_low": temperature - 1,
+                                    "target_temp_high": max(min_t, min(max_t, temperature + 1)),
+                                    "target_temp_low": max(min_t, min(max_t, temperature - 1)),
                                 }
                         else:
                             service_data = {
@@ -1188,16 +1183,20 @@ class DeviceConnection:
 
     async def _push_camera_snapshots(self):
         from homeassistant.components.camera import async_get_image
-        cameras = []
-        for entity_id in self._camera_entities:
+
+        async def _fetch_one(entity_id: str) -> dict | None:
             try:
                 image = await async_get_image(self._hass, entity_id, timeout=5)
                 b64 = base64.b64encode(image.content).decode()
                 state = self._hass.states.get(entity_id)
                 name = (state.attributes.get("friendly_name", entity_id) if state else entity_id)
-                cameras.append({"id": entity_id, "name": name, "data": b64})
+                return {"id": entity_id, "name": name, "data": b64}
             except Exception as e:
                 _LOGGER.debug("ha_smart_display: camera snapshot failed for %s: %s", entity_id, e)
+                return None
+
+        results = await asyncio.gather(*[_fetch_one(eid) for eid in self._camera_entities])
+        cameras = [r for r in results if r is not None]
         if cameras:
             await self.send_command({"cameras": cameras})
 
