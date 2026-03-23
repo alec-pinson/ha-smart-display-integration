@@ -17,6 +17,8 @@ CONF_IMMICH_ALBUM_IDS = "immich_album_ids"
 CONF_IMMICH_REFRESH_INTERVAL = "immich_refresh_interval"  # minutes, default 60
 CONF_IMMICH_BATCH_SIZE = "immich_batch_size"              # photos per refresh, default 30
 CONF_SLIDESHOW_INTERVAL = "slideshow_interval"            # minutes, default 1
+CONF_FRIGATE_URL = "frigate_url"
+CONF_GO2RTC_URL = "go2rtc_url"
 IMMICH_RECENT_PHOTOS_ID = "__recent__"
 
 DEFAULT_PORT = 8472
@@ -54,3 +56,9 @@ SERVICE_GET_TIMERS = "get_timers"
 SERVICE_DISMISS_ALL_TIMERS = "dismiss_all_timers"
 SERVICE_GET_ALARMS = "get_alarms"
 SERVICE_DISMISS_ALL_ALARMS = "dismiss_all_alarms"
+
+# Camera stream types
+STREAM_TYPE_SNAPSHOT = "snapshot"
+STREAM_TYPE_VIDEO = "video"
+STREAM_TYPE_VIDEO_AUDIO = "video_audio"
+STREAM_TYPES = [STREAM_TYPE_SNAPSHOT, STREAM_TYPE_VIDEO, STREAM_TYPE_VIDEO_AUDIO]

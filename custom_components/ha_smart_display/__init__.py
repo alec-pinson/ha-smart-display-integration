@@ -32,7 +32,11 @@ from .const import (
     CONF_IMMICH_REFRESH_INTERVAL,
     CONF_IMMICH_BATCH_SIZE,
     CONF_SLIDESHOW_INTERVAL,
+    CONF_FRIGATE_URL,
+    CONF_GO2RTC_URL,
     IMMICH_RECENT_PHOTOS_ID,
+    STREAM_TYPE_SNAPSHOT,
+    STREAM_TYPES,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
     SERVICE_SET_TIMER,
@@ -175,6 +179,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     immich_refresh_interval = int(entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60))
     immich_batch_size = int(entry.options.get(CONF_IMMICH_BATCH_SIZE, 30))
     slideshow_interval = int(entry.options.get(CONF_SLIDESHOW_INTERVAL, 1)) * 60  # convert minutes → seconds
+    frigate_url = (entry.options.get(CONF_FRIGATE_URL) or "").strip().rstrip("/")
+    go2rtc_url = (entry.options.get(CONF_GO2RTC_URL) or "").strip().rstrip("/")
 
     pill_store = Store(hass, 1, f"{DOMAIN}.{device_id}.pills")
     persisted_pills = await pill_store.async_load() or {}
@@ -192,7 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "satellite_entity": None,
     }
 
-    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval)
+    connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval, frigate_url, go2rtc_url)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
@@ -377,7 +383,20 @@ def _register_services(hass: HomeAssistant) -> None:
         entity_id = call.data["camera_entity"]
         state = hass.states.get(entity_id)
         name = state.attributes.get("friendly_name", entity_id) if state else entity_id
-        payload: dict = {"id": entity_id, "name": name}
+        stream_type = call.data.get("stream_type", STREAM_TYPE_SNAPSHOT)
+
+        # For video stream types, at least one streaming URL must be configured
+        if stream_type != STREAM_TYPE_SNAPSHOT and not conn._frigate_url and not conn._go2rtc_url:
+            _LOGGER.warning("ha_smart_display: stream_type '%s' requested but no Frigate or go2rtc URL configured — falling back to snapshot", stream_type)
+            stream_type = STREAM_TYPE_SNAPSHOT
+
+        conn._focused_camera_stream_type = stream_type
+        payload: dict = {"id": entity_id, "name": name, "stream_type": stream_type}
+        if stream_type != STREAM_TYPE_SNAPSHOT:
+            if conn._frigate_url:
+                payload["frigate_url"] = conn._frigate_url
+            if conn._go2rtc_url:
+                payload["go2rtc_url"] = conn._go2rtc_url
         if "duration" in call.data:
             payload["duration"] = call.data["duration"]
         await conn.send_command({"open_camera": payload})
@@ -387,6 +406,7 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({
             vol.Required("device_id"): cv.string,
             vol.Required("camera_entity"): cv.entity_id,
+            vol.Optional("stream_type", default=STREAM_TYPE_SNAPSHOT): vol.In(STREAM_TYPES),
             vol.Optional("duration"): vol.All(vol.Coerce(int), vol.Range(min=1)),
         }),
     )
@@ -398,6 +418,7 @@ def _register_services(hass: HomeAssistant) -> None:
         conn = get_connection(hass, device_id)
         if not conn:
             return
+        conn._focused_camera_stream_type = STREAM_TYPE_SNAPSHOT
         await conn.send_command({"close_camera": True})
 
     hass.services.async_register(
@@ -578,7 +599,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class DeviceConnection:
     """Persistent WebSocket connection from HA to the display device."""
 
-    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, immich_url="", immich_api_key="", immich_album_ids=None, immich_refresh_interval=60, immich_batch_size=30, slideshow_interval=60):
+    def __init__(self, hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity=None, temperature_sensor=None, humidity_sensor=None, auto_ambient_lux=None, ma_media_player=None, immich_url="", immich_api_key="", immich_album_ids=None, immich_refresh_interval=60, immich_batch_size=30, slideshow_interval=60, frigate_url="", go2rtc_url=""):
         self._hass = hass
         self._entry = entry
         self._device_id = device_id
@@ -604,7 +625,11 @@ class DeviceConnection:
         self._unsub_immich_refresh = None
         self._camera_task = None
         self._focused_camera: str | None = None
+        self._focused_camera_stream_type: str = STREAM_TYPE_SNAPSHOT
         self._fast_camera_task = None
+        self._frigate_url = frigate_url
+        self._go2rtc_url = go2rtc_url
+        self._go2rtc_streams: set[str] | None = None  # cached go2rtc stream names
         self._immich_refresh_interval = immich_refresh_interval
         self._slideshow_interval = slideshow_interval
         self._immich_provider = (
@@ -621,6 +646,7 @@ class DeviceConnection:
                 async with websockets.connect(uri, open_timeout=10) as ws:
                     self._ws = ws
                     self._reconnect_delay = 5
+                    self._go2rtc_streams = None  # re-fetch on next use
                     _LOGGER.info("ha_smart_display: connected to %s", self._device_id)
 
                     # Subscribe to weather changes
@@ -754,6 +780,7 @@ class DeviceConnection:
                             await self.send_command({"ambient_active": should_be_ambient})
 
                 # Handle focused camera — start/stop fast snapshot loop
+                # For video stream types, app streams directly from Frigate — no JPEG loop needed
                 if "focused_camera" in payload:
                     focused = payload.get("focused_camera")
                     if focused != self._focused_camera:
@@ -761,7 +788,7 @@ class DeviceConnection:
                         if self._fast_camera_task:
                             self._fast_camera_task.cancel()
                             self._fast_camera_task = None
-                        if focused and focused in self._camera_entities:
+                        if focused and focused in self._camera_entities and self._focused_camera_stream_type == STREAM_TYPE_SNAPSHOT:
                             self._fast_camera_task = self._hass.async_create_task(
                                 self._focused_camera_loop(focused)
                             )
@@ -1167,6 +1194,30 @@ class DeviceConnection:
         merged = static_photos + immich_photos
         random.shuffle(merged)
         await self.send_command({"photos": merged})
+
+    async def _check_go2rtc_stream(self, camera_name: str) -> bool:
+        """Check if a camera has a go2rtc stream available in Frigate."""
+        if not self._frigate_url:
+            return False
+        if self._go2rtc_streams is None:
+            import aiohttp
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"{self._frigate_url}/api/go2rtc/api/streams",
+                        timeout=aiohttp.ClientTimeout(total=5),
+                        ssl=False,
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            self._go2rtc_streams = set(data.keys())
+                        else:
+                            _LOGGER.warning("ha_smart_display: go2rtc streams API returned %s", resp.status)
+                            return False
+            except Exception as e:
+                _LOGGER.warning("ha_smart_display: failed to query go2rtc streams: %s", e)
+                return False
+        return camera_name in self._go2rtc_streams
 
     async def _camera_loop(self):
         """Push camera snapshots while connected — 10s when visible, 60s otherwise."""

@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, DEFAULT_PORT, IMMICH_RECENT_PHOTOS_ID
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, CONF_FRIGATE_URL, CONF_GO2RTC_URL, DEFAULT_PORT, IMMICH_RECENT_PHOTOS_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -201,6 +201,12 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_CAMERA_ENTITIES): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="camera", multiple=True)
             ),
+            vol.Optional(CONF_FRIGATE_URL): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+            ),
+            vol.Optional(CONF_GO2RTC_URL): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+            ),
             vol.Optional(CONF_AUTO_AMBIENT_LUX): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=10000, step=1, mode=selector.NumberSelectorMode.BOX)
             ),
@@ -235,6 +241,8 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                     CONF_HUMIDITY_SENSOR: self._config_entry.options.get(CONF_HUMIDITY_SENSOR, ""),
                     CONF_PHOTO_URLS: self._config_entry.options.get(CONF_PHOTO_URLS, ""),
                     CONF_CAMERA_ENTITIES: self._config_entry.options.get(CONF_CAMERA_ENTITIES, []),
+                    CONF_FRIGATE_URL: self._config_entry.options.get(CONF_FRIGATE_URL, ""),
+                    CONF_GO2RTC_URL: self._config_entry.options.get(CONF_GO2RTC_URL, ""),
                     CONF_AUTO_AMBIENT_LUX: self._config_entry.options.get(CONF_AUTO_AMBIENT_LUX),
                     CONF_MA_MEDIA_PLAYER: self._config_entry.options.get(CONF_MA_MEDIA_PLAYER, ""),
                     CONF_IMMICH_URL: self._config_entry.options.get(CONF_IMMICH_URL, ""),

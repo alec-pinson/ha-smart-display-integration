@@ -252,6 +252,20 @@ show_camera_stream:
       selector:
         entity:
           domain: camera
+    stream_type:
+      name: Stream Type
+      description: "Type of camera stream: snapshot (1fps JPEG, default), video (live video, no audio), or video_audio (live video with audio). Video types require Frigate URL configured and a go2rtc stream for the camera."
+      required: false
+      default: snapshot
+      selector:
+        select:
+          options:
+            - label: Snapshot (1fps JPEG)
+              value: snapshot
+            - label: Video (no audio)
+              value: video
+            - label: Video with Audio
+              value: video_audio
     duration:
       name: Duration
       description: Optional. Auto-close the camera view after this many seconds.
