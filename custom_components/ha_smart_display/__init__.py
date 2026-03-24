@@ -1255,6 +1255,7 @@ class DeviceConnection:
         """Push snapshots for a focused camera at ~1fps."""
         from homeassistant.components.camera import async_get_image
         while self._ws is not None and self._focused_camera == entity_id:
+            start = asyncio.get_event_loop().time()
             try:
                 image = await async_get_image(self._hass, entity_id, timeout=5)
                 b64 = base64.b64encode(image.content).decode()
@@ -1263,7 +1264,8 @@ class DeviceConnection:
                 await self.send_command({"focused_camera_data": {"id": entity_id, "name": name, "data": b64}})
             except Exception as e:
                 _LOGGER.debug("ha_smart_display: focused camera snapshot failed: %s", e)
-            await asyncio.sleep(1)
+            elapsed = asyncio.get_event_loop().time() - start
+            await asyncio.sleep(max(0.0, 1.0 - elapsed))
 
     async def _push_timers_alarms(self):
         data = self._hass.data[DOMAIN].get(self._device_id, {})
