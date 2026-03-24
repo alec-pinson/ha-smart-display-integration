@@ -1220,8 +1220,9 @@ class DeviceConnection:
         return camera_name in self._go2rtc_streams
 
     async def _camera_loop(self):
-        """Push camera snapshots while connected — 10s when visible, 60s otherwise."""
+        """Push camera snapshots while connected — 2s when visible, 60s otherwise."""
         while self._ws is not None:
+            start = asyncio.get_event_loop().time()
             device_state = self._hass.data[DOMAIN].get(self._device_id, {}).get("state", {})
             ambient_active = device_state.get("ambient_active", False)
             cameras_visible = (
@@ -1230,7 +1231,9 @@ class DeviceConnection:
             )
             if not ambient_active:
                 await self._push_camera_snapshots()
-            await asyncio.sleep(10 if cameras_visible else 60)
+            elapsed = asyncio.get_event_loop().time() - start
+            interval = 2.0 if cameras_visible else 60.0
+            await asyncio.sleep(max(0.0, interval - elapsed))
 
     async def _push_camera_snapshots(self):
         from homeassistant.components.camera import async_get_image
