@@ -698,6 +698,7 @@ class DeviceConnection:
                             self._on_immich_refresh,
                             timedelta(minutes=self._immich_refresh_interval),
                         )
+                    await self.send_command({"display_modes": self._available_modes()})
                     await self.send_command({"slideshow_interval": self._slideshow_interval})
                     await self._push_photos()
                     await self._push_timers_alarms()
@@ -1300,6 +1301,16 @@ class DeviceConnection:
                 SIGNAL_AVAILABILITY_UPDATED.format(device_id=self._device_id),
                 available,
             )
+
+    def _available_modes(self) -> list[str]:
+        modes = ["clock"]
+        if self._weather_entity:
+            modes.append("weather")
+        if self._camera_entities:
+            modes.append("cameras")
+        if self._ma_media_player:
+            modes.append("music")
+        return modes
 
     async def send_command(self, payload: dict):
         if self._ws is None:

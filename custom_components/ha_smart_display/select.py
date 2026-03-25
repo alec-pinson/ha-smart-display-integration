@@ -4,7 +4,10 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import WAKE_WORD_OPTIONS, WAKE_WORD_SENSITIVITY_OPTIONS, VAD_SENSITIVITY_OPTIONS, AMBIENT_MODE_OPTIONS
+from .const import (
+    WAKE_WORD_OPTIONS, WAKE_WORD_SENSITIVITY_OPTIONS, VAD_SENSITIVITY_OPTIONS,
+    CONF_WEATHER_ENTITY, CONF_CAMERA_ENTITIES, CONF_MA_MEDIA_PLAYER,
+)
 from .entity_base import HaSmartDisplayEntity
 
 
@@ -85,15 +88,26 @@ class VadSensitivitySelect(HaSmartDisplayEntity, SelectEntity):
 class AmbientModeSelect(HaSmartDisplayEntity, SelectEntity):
     _attr_name = "Display Mode"
     _attr_icon = "mdi:television-ambient-light"
-    _attr_options = AMBIENT_MODE_OPTIONS
 
     @property
     def entity_description_key(self):
         return "ambient_mode"
 
     @property
+    def options(self) -> list[str]:
+        opts = ["clock"]
+        if self._entry.options.get(CONF_WEATHER_ENTITY):
+            opts.append("weather")
+        if self._entry.options.get(CONF_CAMERA_ENTITIES):
+            opts.append("cameras")
+        if self._entry.options.get(CONF_MA_MEDIA_PLAYER):
+            opts.append("music")
+        return opts
+
+    @property
     def current_option(self):
-        return self._current_state().get("ambient_mode", "clock")
+        mode = self._current_state().get("ambient_mode", "clock")
+        return mode if mode in self.options else "clock"
 
     def _handle_state_update(self, payload):
         self.async_write_ha_state()
