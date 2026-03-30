@@ -467,6 +467,7 @@ def _register_services(hass: HomeAssistant) -> None:
         if call.data.get("color"):
             pill["color"] = call.data["color"]
         pill["position"] = call.data.get("position", "under_clock")
+        pill["size"] = call.data.get("size", "medium")
         _cancel_pill_timer(device_id, pill_id)
         hass.data[DOMAIN][device_id]["pills"][pill_id] = pill
         await _save_pills(device_id)
@@ -542,6 +543,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("icon"): vol.In(_pill_icons),
             vol.Optional("color"): cv.string,
             vol.Optional("position", default="under_clock"): vol.In(_pill_positions),
+            vol.Optional("size", default="medium"): vol.In(["small", "medium", "large"]),
             vol.Optional("duration"): vol.Coerce(int),
         }),
     )
