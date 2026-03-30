@@ -375,6 +375,20 @@ add_pill:
               value: bottom_center
             - label: Bottom Right
               value: bottom_right
+    size:
+      name: Size
+      description: Size of the pill. Defaults to medium.
+      required: false
+      default: medium
+      selector:
+        select:
+          options:
+            - label: Small
+              value: small
+            - label: Medium
+              value: medium
+            - label: Large
+              value: large
     duration:
       name: Duration (seconds)
       description: Optional. Automatically remove the pill after this many seconds.
