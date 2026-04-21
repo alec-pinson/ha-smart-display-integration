@@ -36,6 +36,8 @@ from .const import (
     CONF_GO2RTC_URL,
     IMMICH_RECENT_PHOTOS_ID,
     STREAM_TYPE_SNAPSHOT,
+    STREAM_TYPE_VIDEO,
+    STREAM_TYPE_VIDEO_AUDIO,
     STREAM_TYPES,
     SIGNAL_STATE_UPDATED,
     SIGNAL_AVAILABILITY_UPDATED,
@@ -710,6 +712,19 @@ class DeviceConnection:
                         self._camera_task = self._hass.async_create_task(
                             self._camera_loop()
                         )
+
+                    # Send stream config so the app knows what mode to use on tap
+                    if self._go2rtc_url or self._frigate_url:
+                        cfg: dict = {}
+                        if self._go2rtc_url:
+                            cfg["stream_type"] = STREAM_TYPE_VIDEO_AUDIO
+                            if self._frigate_url:
+                                cfg["frigate_url"] = self._frigate_url
+                            cfg["go2rtc_url"] = self._go2rtc_url
+                        else:
+                            cfg["stream_type"] = STREAM_TYPE_VIDEO
+                            cfg["frigate_url"] = self._frigate_url
+                        await self.send_command({"camera_stream_config": cfg})
 
                     await self._listen(ws)
             except (OSError, websockets.WebSocketException) as e:
