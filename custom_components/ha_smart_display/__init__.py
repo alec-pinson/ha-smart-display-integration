@@ -757,6 +757,7 @@ class DeviceConnection:
 
             if msg_type == "state":
                 payload = msg.get("state", {})
+                old_state = self._hass.data[DOMAIN][self._device_id].get("state", {})
                 self._hass.data[DOMAIN][self._device_id]["state"] = payload
                 self._set_available(True)
                 async_dispatcher_send(
@@ -795,6 +796,15 @@ class DeviceConnection:
                             self._fast_camera_task = self._hass.async_create_task(
                                 self._focused_camera_loop(focused)
                             )
+
+                # When user navigates to cameras page, push snapshots immediately
+                # instead of waiting for the next camera loop interval (up to 60s).
+                if (
+                    self._camera_entities
+                    and payload.get("ambient_mode") == "cameras"
+                    and old_state.get("ambient_mode") != "cameras"
+                ):
+                    self._hass.async_create_task(self._push_camera_snapshots())
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
