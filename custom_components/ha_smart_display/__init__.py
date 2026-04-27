@@ -13,6 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.storage import Store
 
+from .updater import GitHubUpdater
 from .const import (
     DOMAIN,
     CONF_DEVICE_ID,
@@ -61,7 +62,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite"]
+PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite", "update"]
 
 
 class ImmichProvider:
@@ -198,11 +199,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "pill_timers": {},
         "pill_store": pill_store,
         "satellite_entity": None,
+        "app_version": None,
+        "updater": None,
     }
 
     connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval, frigate_url, go2rtc_url)
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
+
+    updater = GitHubUpdater(hass)
+    hass.data[DOMAIN][device_id]["updater"] = updater
+    entry.async_create_background_task(
+        hass, updater.async_start(), f"ha_smart_display_updater_{device_id}"
+    )
+    entry.async_on_unload(updater.stop)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -590,10 +600,6 @@ def _parse_photo_urls(raw: str) -> list[str]:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_id = entry.data[CONF_DEVICE_ID]
-    conn = hass.data[DOMAIN].get(device_id, {}).get("connection")
-    if conn:
-        await conn.stop()
-
     ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if ok:
         hass.data[DOMAIN].pop(device_id, None)
@@ -774,6 +780,8 @@ class DeviceConnection:
                 payload = msg.get("state", {})
                 old_state = self._hass.data[DOMAIN][self._device_id].get("state", {})
                 self._hass.data[DOMAIN][self._device_id]["state"] = payload
+                if "app_version" in payload:
+                    self._hass.data[DOMAIN][self._device_id]["app_version"] = payload["app_version"]
                 self._set_available(True)
                 async_dispatcher_send(
                     self._hass,

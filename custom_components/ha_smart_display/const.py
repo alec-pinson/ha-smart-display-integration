@@ -62,3 +62,9 @@ STREAM_TYPE_SNAPSHOT = "snapshot"
 STREAM_TYPE_VIDEO = "video"
 STREAM_TYPE_VIDEO_AUDIO = "video_audio"
 STREAM_TYPES = [STREAM_TYPE_SNAPSHOT, STREAM_TYPE_VIDEO, STREAM_TYPE_VIDEO_AUDIO]
+
+from datetime import timedelta
+
+# OTA updates
+GITHUB_RELEASE_REPO = "alec-pinson/ha-smart-display-app"
+UPDATE_CHECK_INTERVAL = timedelta(hours=24)

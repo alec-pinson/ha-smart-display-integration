@@ -55,6 +55,8 @@ class HaSmartDisplayEntity(Entity):
         conn = get_connection(self.hass, self._device_id)
         if conn:
             self.hass.async_create_task(conn.send_command(payload))
+        else:
+            _LOGGER.warning("ha_smart_display: _send_command: no connection for device %s, payload=%s", self._device_id, payload)
 
     @abstractmethod
     def _handle_state_update(self, payload: dict) -> None:

@@ -1,8 +1,10 @@
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN, SIGNAL_STATE_UPDATED
 from .entity_base import HaSmartDisplayEntity
 
 
@@ -14,6 +16,7 @@ async def async_setup_entry(
         NextPhotoButton(hass, entry),
         PreviousPhotoButton(hass, entry),
         WakeForVoiceButton(hass, entry),
+        CheckForUpdatesButton(hass, entry),
     ])
 
 
@@ -75,3 +78,25 @@ class WakeForVoiceButton(HaSmartDisplayEntity, ButtonEntity):
 
     async def async_press(self):
         self._send_command({"action": "wake_for_voice"})
+
+
+class CheckForUpdatesButton(HaSmartDisplayEntity, ButtonEntity):
+    _attr_name = "Check for Updates"
+    _attr_icon = "mdi:update"
+
+    @property
+    def entity_description_key(self):
+        return "check_for_updates"
+
+    def _handle_state_update(self, payload):
+        pass
+
+    async def async_press(self):
+        updater = self.hass.data.get(DOMAIN, {}).get(self._device_id, {}).get("updater")
+        if updater:
+            await updater.async_check()
+            async_dispatcher_send(
+                self.hass,
+                SIGNAL_STATE_UPDATED.format(device_id=self._device_id),
+                {},
+            )
