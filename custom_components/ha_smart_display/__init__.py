@@ -667,9 +667,16 @@ class DeviceConnection:
                     self._ws = ws
                     self._reconnect_delay = 5
                     # Identify this HA instance so the display can route/park us.
-                    from homeassistant.helpers import instance_id as _instance_id
                     if self._instance_id is None:
-                        self._instance_id = await _instance_id.async_get(self._hass)
+                        try:
+                            from homeassistant.helpers import instance_id as _instance_id
+                            self._instance_id = await _instance_id.async_get(self._hass)
+                        except Exception as e:
+                            # Convert to a retryable error so the reconnect loop
+                            # (which catches OSError/WebSocketException) backs off
+                            # and tries again instead of exiting permanently.
+                            _LOGGER.warning("ha_smart_display: failed to get instance_id: %s", e)
+                            raise OSError("instance_id fetch failed") from e
                     await ws.send(json.dumps(build_hello(
                         self._instance_id, self._hass.config.location_name,
                     )))
