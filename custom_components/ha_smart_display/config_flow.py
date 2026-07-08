@@ -101,9 +101,16 @@ class HaSmartDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _try_pair(self, code: str) -> dict | bool | None:
         uri = f"ws://{self._host}:{self._port}"
         _LOGGER.debug("ha_smart_display: attempting to connect to %s", uri)
+        from homeassistant.helpers import instance_id as _instance_id
         try:
+            iid = await _instance_id.async_get(self.hass)
             async with websockets.connect(uri, open_timeout=10) as ws:
-                await ws.send(json.dumps({"type": "pair", "code": code}))
+                await ws.send(json.dumps({
+                    "type": "pair",
+                    "code": code,
+                    "instance_id": iid,
+                    "name": self.hass.config.location_name,
+                }))
                 raw = await asyncio.wait_for(ws.recv(), timeout=10)
                 msg = json.loads(raw)
                 if msg.get("type") == "pair_ok":
