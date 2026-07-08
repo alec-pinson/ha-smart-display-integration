@@ -62,6 +62,15 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def build_hello(instance_id: str, name: str, host: str | None = None) -> dict:
+    """Build the identification message HA sends to the display on connect."""
+    msg = {"type": "hello", "instance_id": instance_id, "name": name}
+    if host:
+        msg["host"] = host
+    return msg
+
+
 PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite", "update"]
 
 
@@ -624,6 +633,7 @@ class DeviceConnection:
         self._ma_media_player = ma_media_player
         self._auto_ambient_active: bool | None = None
         self._ws = None
+        self._instance_id = None
         self._running = True
         self._reconnect_delay = 5
         self._unsub_weather = None
@@ -656,6 +666,13 @@ class DeviceConnection:
                 async with websockets.connect(uri, open_timeout=10) as ws:
                     self._ws = ws
                     self._reconnect_delay = 5
+                    # Identify this HA instance so the display can route/park us.
+                    from homeassistant.helpers import instance_id as _instance_id
+                    if self._instance_id is None:
+                        self._instance_id = await _instance_id.async_get(self._hass)
+                    await ws.send(json.dumps(build_hello(
+                        self._instance_id, self._hass.config.location_name,
+                    )))
                     self._go2rtc_streams = None  # re-fetch on next use
                     _LOGGER.info("ha_smart_display: connected to %s", self._device_id)
 
