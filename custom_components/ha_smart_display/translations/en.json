@@ -38,6 +38,7 @@
           "photo_urls": "Photo URLs",
           "camera_entities": "Camera Entities",
           "frigate_url": "Frigate URL",
+          "go2rtc_url": "go2rtc URL",
           "auto_ambient_lux": "Auto Ambient Lux Threshold",
           "ma_media_player": "Music Assistant Media Player",
           "immich_url": "Immich URL",
