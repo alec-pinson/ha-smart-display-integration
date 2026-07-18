@@ -154,3 +154,76 @@ def test_beta_channel_uses_releases_list_endpoint():
     assert session.get.call_args[0][0].endswith("/releases")
     assert updater.latest_version == "1.1.1-beta.1"
     assert updater.latest_apk_url == "https://example.com/beta1.apk"
+
+
+def test_beta_channel_skips_draft_releases():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.2-beta.1",
+            "draft": True,
+            "html_url": "https://example.com/draft",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft.apk"}],
+        },
+        {
+            "tag_name": "v1.1.1-beta.2",
+            "draft": False,
+            "html_url": "https://example.com/beta2",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta2.apk"}],
+        },
+    ])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.1-beta.2"
+    assert updater.latest_apk_url == "https://example.com/beta2.apk"
+
+
+def test_beta_channel_selects_stable_when_it_is_newest():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.1",
+            "draft": False,
+            "prerelease": False,
+            "html_url": "https://example.com/stable",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/stable.apk"}],
+        },
+        {
+            "tag_name": "v1.1.1-beta.2",
+            "draft": False,
+            "prerelease": True,
+            "html_url": "https://example.com/beta2",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta2.apk"}],
+        },
+    ])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.1"
+    assert updater.latest_apk_url == "https://example.com/stable.apk"
+
+
+def test_beta_channel_retains_cached_version_when_no_usable_release():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    updater.latest_version = "1.1.0"
+    updater.latest_apk_url = "https://example.com/cached.apk"
+    session = _make_session(200, [])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.0"
+    assert updater.latest_apk_url == "https://example.com/cached.apk"
+
+
+def test_beta_channel_no_apk_asset_leaves_url_none():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.1-beta.1",
+            "draft": False,
+            "html_url": "https://example.com/beta1",
+            "assets": [{"name": "source.zip", "browser_download_url": "https://example.com/source.zip"}],
+        },
+    ])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.1-beta.1"
+    assert updater.latest_apk_url is None
