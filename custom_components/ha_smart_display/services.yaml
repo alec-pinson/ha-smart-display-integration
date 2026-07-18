@@ -290,7 +290,11 @@ close_camera_stream:
 
 add_pill:
   name: Add Pill
-  description: Show a pill (chip) on the display. Use the same pill_id to update an existing pill.
+  description: >-
+    Add or update a status pill on the display. Tapping any pill fires a
+    `ha_smart_display_pill_tap` event with `device_id` and `pill_id` — use it
+    to trigger an automation. The pill is not removed automatically on tap;
+    call `remove_pill` from your automation if you want it dismissed.
   fields:
     device_id:
       name: Display
