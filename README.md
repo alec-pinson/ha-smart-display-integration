@@ -92,31 +92,43 @@ fires the automation once.
 Pills are tappable in normal mode only. In ambient mode the first tap wakes the
 display; tap the pill again once the display is awake.
 
-```yaml
-# Show a pill when the front door is left unlocked
-action:
-  service: ha_smart_display.add_pill
-  data:
-    device_id: echo_show_kitchen
-    pill_id: front_door
-    text: "Front door unlocked"
-    icon: lock
-    color: "#C62828"
+Show a pill when the front door is left unlocked:
 
-# Lock it and clear the pill when tapped
-trigger:
-  platform: event
-  event_type: ha_smart_display_pill_tap
-  event_data:
-    pill_id: front_door
-action:
-  - service: lock.lock
-    target:
+```yaml
+automation:
+  - alias: Front door unlocked pill
+    trigger:
+      platform: state
       entity_id: lock.front_door
-  - service: ha_smart_display.remove_pill
-    data:
-      device_id: echo_show_kitchen
-      pill_id: front_door
+      to: unlocked
+    action:
+      service: ha_smart_display.add_pill
+      data:
+        device_id: echo_show_kitchen
+        pill_id: front_door
+        text: "Front door unlocked"
+        icon: lock
+        color: "#C62828"
+```
+
+Lock the door and clear the pill when it's tapped:
+
+```yaml
+automation:
+  - alias: Front door pill tapped
+    trigger:
+      platform: event
+      event_type: ha_smart_display_pill_tap
+      event_data:
+        pill_id: front_door
+    action:
+      - service: lock.lock
+        target:
+          entity_id: lock.front_door
+      - service: ha_smart_display.remove_pill
+        data:
+          device_id: echo_show_kitchen
+          pill_id: front_door
 ```
 
 ## Companion app
