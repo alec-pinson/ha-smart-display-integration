@@ -27,6 +27,8 @@ class GitHubUpdater:
     async def async_check(self, session=None) -> None:
         if session is None:
             session = async_get_clientsession(self._hass)
+        # /releases/latest excludes pre-releases; the list endpoint is
+        # newest-first and includes them.
         url = GITHUB_RELEASES_URL if self._beta else GITHUB_LATEST_URL
         try:
             async with session.get(
@@ -38,10 +40,14 @@ class GitHubUpdater:
                     return
                 data = await resp.json()
             if self._beta:
-                data = self._select_release(data)
-                if data is None:
-                    _LOGGER.warning("ha_smart_display: no usable release found on beta channel")
+                release = self._select_release(data)
+                if release is None:
+                    _LOGGER.warning(
+                        "ha_smart_display: no usable release found on beta channel for %s",
+                        GITHUB_RELEASE_REPO,
+                    )
                     return
+                data = release
             tag = data.get("tag_name", "")
             self.latest_version = tag.lstrip("v")
             self.release_html_url = data.get("html_url")
@@ -57,7 +63,7 @@ class GitHubUpdater:
             _LOGGER.warning("ha_smart_display: failed to check for updates: %s", err)
 
     @staticmethod
-    def _select_release(releases) -> dict | None:
+    def _select_release(releases: object) -> dict | None:
         if not isinstance(releases, list):
             return None
         return next((r for r in releases if not r.get("draft", False)), None)
