@@ -123,3 +123,34 @@ def test_no_apk_asset_leaves_url_none():
     run(updater.async_check(session=session))
     assert updater.latest_version == "1.0.0"
     assert updater.latest_apk_url is None
+
+
+def test_stable_channel_uses_latest_endpoint():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass)
+    session = _make_session(200, {
+        "tag_name": "v1.1.0",
+        "html_url": "https://example.com/stable",
+        "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/stable.apk"}],
+    })
+    run(updater.async_check(session=session))
+    assert session.get.call_args[0][0].endswith("/releases/latest")
+    assert updater.latest_version == "1.1.0"
+
+
+def test_beta_channel_uses_releases_list_endpoint():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.1-beta.1",
+            "draft": False,
+            "prerelease": True,
+            "html_url": "https://example.com/beta1",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta1.apk"}],
+        },
+    ])
+    run(updater.async_check(session=session))
+    assert session.get.call_args[0][0].endswith("/releases")
+    assert updater.latest_version == "1.1.1-beta.1"
+    assert updater.latest_apk_url == "https://example.com/beta1.apk"
