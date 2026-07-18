@@ -161,10 +161,16 @@ def test_beta_channel_skips_draft_releases():
     updater = GitHubUpdater(hass, beta=True)
     session = _make_session(200, [
         {
+            "tag_name": "v1.1.3-beta.1",
+            "draft": True,
+            "html_url": "https://example.com/draft1",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft1.apk"}],
+        },
+        {
             "tag_name": "v1.1.2-beta.1",
             "draft": True,
-            "html_url": "https://example.com/draft",
-            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft.apk"}],
+            "html_url": "https://example.com/draft2",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft2.apk"}],
         },
         {
             "tag_name": "v1.1.1-beta.2",
@@ -208,6 +214,30 @@ def test_beta_channel_retains_cached_version_when_no_usable_release():
     updater.latest_version = "1.1.0"
     updater.latest_apk_url = "https://example.com/cached.apk"
     session = _make_session(200, [])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.0"
+    assert updater.latest_apk_url == "https://example.com/cached.apk"
+
+
+def test_beta_channel_retains_cached_version_when_all_releases_are_drafts():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    updater.latest_version = "1.1.0"
+    updater.latest_apk_url = "https://example.com/cached.apk"
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.1-beta.1",
+            "draft": True,
+            "html_url": "https://example.com/draft1",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft1.apk"}],
+        },
+        {
+            "tag_name": "v1.1.0-beta.9",
+            "draft": True,
+            "html_url": "https://example.com/draft2",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft2.apk"}],
+        },
+    ])
     run(updater.async_check(session=session))
     assert updater.latest_version == "1.1.0"
     assert updater.latest_apk_url == "https://example.com/cached.apk"
