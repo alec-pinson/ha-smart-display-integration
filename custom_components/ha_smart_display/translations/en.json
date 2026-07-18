@@ -1,0 +1,73 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA Smart Display",
+        "description": "Enter the IP address of your display device.",
+        "data": {
+          "host": "Host / IP Address",
+          "port": "Port"
+        }
+      },
+      "pairing": {
+        "title": "Pair with {device_name}",
+        "description": "Enter the 6-digit code shown on the display at {host}.",
+        "data": {
+          "pairing_code": "Pairing Code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the display. Make sure it is on the same network and the app is running.",
+      "invalid_code": "Incorrect pairing code. Check the display and try again."
+    },
+    "abort": {
+      "already_configured": "This display is already configured.",
+      "already_in_progress": "Setup is already in progress for this display."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HA Smart Display Options",
+        "data": {
+          "weather_entity": "Weather Entity",
+          "climate_entity": "Climate Entity",
+          "temperature_sensor": "Temperature Sensor",
+          "humidity_sensor": "Humidity Sensor",
+          "photo_urls": "Photo URLs",
+          "camera_entities": "Camera Entities",
+          "frigate_url": "Frigate URL",
+          "auto_ambient_lux": "Auto Ambient Lux Threshold",
+          "ma_media_player": "Music Assistant Media Player",
+          "immich_url": "Immich URL",
+          "immich_api_key": "Immich API Key",
+          "immich_refresh_interval": "Immich Refresh Interval (minutes)",
+          "immich_batch_size": "Immich Batch Size (photos)",
+          "slideshow_interval": "Slideshow Interval",
+          "beta_updates": "Beta app updates"
+        },
+        "data_description": {
+          "photo_urls": "Comma-separated list of image URLs to slideshow on the clock screen.",
+          "frigate_url": "URL of your Frigate instance (e.g. https://frigate.example.com). Enables live video streaming for cameras with go2rtc streams.",
+          "auto_ambient_lux": "Switch to ambient mode when lux drops below this value. Leave blank to disable.",
+          "immich_url": "URL of your Immich server (e.g. http://192.168.1.x:2283). Leave blank to disable Immich.",
+          "immich_api_key": "Immich API key. Required when Immich URL is set.",
+          "beta_updates": "Offer pre-release app builds for testing. Leave off unless you are testing new builds."
+        }
+      },
+      "immich_albums": {
+        "title": "Select Immich Albums",
+        "data": {
+          "immich_album_ids": "Albums"
+        },
+        "data_description": {
+          "immich_album_ids": "Select which Immich albums to include in the photo slideshow."
+        }
+      }
+    },
+    "error": {
+      "immich_connection_failed": "Could not connect to Immich. Check the URL and API key and try again."
+    }
+  }
+}
