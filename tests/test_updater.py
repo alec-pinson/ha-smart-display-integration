@@ -146,6 +146,7 @@ def test_beta_channel_uses_releases_list_endpoint():
             "tag_name": "v1.1.1-beta.1",
             "draft": False,
             "prerelease": True,
+            "published_at": "2026-07-18T10:00:00Z",
             "html_url": "https://example.com/beta1",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta1.apk"}],
         },
@@ -163,18 +164,21 @@ def test_beta_channel_skips_draft_releases():
         {
             "tag_name": "v1.1.3-beta.1",
             "draft": True,
+            "published_at": "2026-07-18T12:00:00Z",
             "html_url": "https://example.com/draft1",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft1.apk"}],
         },
         {
             "tag_name": "v1.1.2-beta.1",
             "draft": True,
+            "published_at": "2026-07-18T11:00:00Z",
             "html_url": "https://example.com/draft2",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft2.apk"}],
         },
         {
             "tag_name": "v1.1.1-beta.2",
             "draft": False,
+            "published_at": "2026-07-18T10:00:00Z",
             "html_url": "https://example.com/beta2",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta2.apk"}],
         },
@@ -192,6 +196,7 @@ def test_beta_channel_selects_stable_when_it_is_newest():
             "tag_name": "v1.1.1",
             "draft": False,
             "prerelease": False,
+            "published_at": "2026-07-18T10:00:00Z",
             "html_url": "https://example.com/stable",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/stable.apk"}],
         },
@@ -199,6 +204,7 @@ def test_beta_channel_selects_stable_when_it_is_newest():
             "tag_name": "v1.1.1-beta.2",
             "draft": False,
             "prerelease": True,
+            "published_at": "2026-07-01T09:00:00Z",
             "html_url": "https://example.com/beta2",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta2.apk"}],
         },
@@ -228,12 +234,14 @@ def test_beta_channel_retains_cached_version_when_all_releases_are_drafts():
         {
             "tag_name": "v1.1.1-beta.1",
             "draft": True,
+            "published_at": "2026-07-18T10:00:00Z",
             "html_url": "https://example.com/draft1",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft1.apk"}],
         },
         {
             "tag_name": "v1.1.0-beta.9",
             "draft": True,
+            "published_at": "2026-07-01T09:00:00Z",
             "html_url": "https://example.com/draft2",
             "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/draft2.apk"}],
         },
@@ -257,3 +265,27 @@ def test_beta_channel_no_apk_asset_leaves_url_none():
     run(updater.async_check(session=session))
     assert updater.latest_version == "1.1.1-beta.1"
     assert updater.latest_apk_url is None
+
+
+def test_beta_channel_selects_newest_by_published_at_not_list_order():
+    hass = MagicMock()
+    updater = GitHubUpdater(hass, beta=True)
+    session = _make_session(200, [
+        {
+            "tag_name": "v1.1.1-beta.1",
+            "draft": False,
+            "published_at": "2026-07-10T09:00:00Z",
+            "html_url": "https://example.com/beta1",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/beta1.apk"}],
+        },
+        {
+            "tag_name": "v1.1.1",
+            "draft": False,
+            "published_at": "2026-07-18T09:00:00Z",
+            "html_url": "https://example.com/stable",
+            "assets": [{"name": "app-release.apk", "browser_download_url": "https://example.com/stable.apk"}],
+        },
+    ])
+    run(updater.async_check(session=session))
+    assert updater.latest_version == "1.1.1"
+    assert updater.latest_apk_url == "https://example.com/stable.apk"

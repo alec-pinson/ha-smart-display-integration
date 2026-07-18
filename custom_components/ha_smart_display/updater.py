@@ -66,7 +66,8 @@ class GitHubUpdater:
     def _select_release(releases: object) -> dict | None:
         if not isinstance(releases, list):
             return None
-        return next((r for r in releases if not r.get("draft", False)), None)
+        candidates = [r for r in releases if not r.get("draft", False)]
+        return max(candidates, key=lambda r: r.get("published_at") or "", default=None)
 
     async def async_start(self) -> None:
         await self.async_check()
