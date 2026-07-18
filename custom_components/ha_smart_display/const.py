@@ -19,6 +19,7 @@ CONF_IMMICH_BATCH_SIZE = "immich_batch_size"              # photos per refresh, 
 CONF_SLIDESHOW_INTERVAL = "slideshow_interval"            # minutes, default 1
 CONF_FRIGATE_URL = "frigate_url"
 CONF_GO2RTC_URL = "go2rtc_url"
+CONF_BETA_UPDATES = "beta_updates"
 IMMICH_RECENT_PHOTOS_ID = "__recent__"
 
 DEFAULT_PORT = 8472

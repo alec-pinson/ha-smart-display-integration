@@ -35,6 +35,7 @@ from .const import (
     CONF_SLIDESHOW_INTERVAL,
     CONF_FRIGATE_URL,
     CONF_GO2RTC_URL,
+    CONF_BETA_UPDATES,
     IMMICH_RECENT_PHOTOS_ID,
     STREAM_TYPE_SNAPSHOT,
     STREAM_TYPE_VIDEO,
@@ -216,7 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][device_id]["connection"] = connection
     entry.async_on_unload(connection.stop)
 
-    updater = GitHubUpdater(hass)
+    updater = GitHubUpdater(hass, beta=entry.options.get(CONF_BETA_UPDATES, False))
     hass.data[DOMAIN][device_id]["updater"] = updater
     entry.async_create_background_task(
         hass, updater.async_start(), f"ha_smart_display_updater_{device_id}"

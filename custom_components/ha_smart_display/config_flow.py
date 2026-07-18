@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, CONF_FRIGATE_URL, CONF_GO2RTC_URL, DEFAULT_PORT, IMMICH_RECENT_PHOTOS_ID
+from .const import DOMAIN, CONF_DEVICE_ID, CONF_DEVICE_NAME, CONF_HOST, CONF_PORT, CONF_WEATHER_ENTITY, CONF_PHOTO_URLS, CONF_CAMERA_ENTITIES, CONF_CLIMATE_ENTITY, CONF_TEMPERATURE_SENSOR, CONF_HUMIDITY_SENSOR, CONF_AUTO_AMBIENT_LUX, CONF_MA_MEDIA_PLAYER, CONF_IMMICH_URL, CONF_IMMICH_API_KEY, CONF_IMMICH_ALBUM_IDS, CONF_IMMICH_REFRESH_INTERVAL, CONF_IMMICH_BATCH_SIZE, CONF_SLIDESHOW_INTERVAL, CONF_FRIGATE_URL, CONF_GO2RTC_URL, CONF_BETA_UPDATES, DEFAULT_PORT, IMMICH_RECENT_PHOTOS_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -235,6 +235,7 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_SLIDESHOW_INTERVAL): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=60, step=1, unit_of_measurement="min", mode=selector.NumberSelectorMode.BOX)
             ),
+            vol.Optional(CONF_BETA_UPDATES, default=False): selector.BooleanSelector(),
         })
 
         return self.async_show_form(
@@ -257,6 +258,7 @@ class HaSmartDisplayOptionsFlow(config_entries.OptionsFlow):
                     CONF_IMMICH_REFRESH_INTERVAL: self._config_entry.options.get(CONF_IMMICH_REFRESH_INTERVAL, 60),
                     CONF_IMMICH_BATCH_SIZE: self._config_entry.options.get(CONF_IMMICH_BATCH_SIZE, 30),
                     CONF_SLIDESHOW_INTERVAL: self._config_entry.options.get(CONF_SLIDESHOW_INTERVAL, 1),
+                    CONF_BETA_UPDATES: self._config_entry.options.get(CONF_BETA_UPDATES, False),
                 },
             ),
             errors=errors,
