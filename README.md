@@ -53,6 +53,7 @@ After setup, configure optional features via **Settings → Integrations → HA 
 | Slideshow interval | How often to advance the photo (minutes, default 1) |
 | go2rtc URL | go2rtc server URL for live RTSP camera streams with audio |
 | Frigate URL | Frigate NVR URL (used for stream source resolution) |
+| Beta app updates | Offer pre-release app builds for testing. Off by default. |
 
 ## Services
 
