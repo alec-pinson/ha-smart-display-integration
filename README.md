@@ -67,6 +67,69 @@ After setup, configure optional features via **Settings → Integrations → HA 
 | `ha_smart_display.set_alarm` | Set an alarm on the device |
 | `ha_smart_display.dismiss_alarm` | Dismiss an alarm |
 | `ha_smart_display.set_photos` | Push a new set of photo URLs to the slideshow |
+| `ha_smart_display.add_pill` | Add or update a status pill on the display |
+| `ha_smart_display.remove_pill` | Remove a pill by id |
+| `ha_smart_display.dismiss_all_pills` | Remove all pills from the display |
+
+## Events
+
+### `ha_smart_display_pill_tap`
+
+Fired when any pill on the display is tapped. Every pill is tappable — there is
+no flag to set when creating one.
+
+| Field | Description |
+|---|---|
+| `device_id` | The display the pill was tapped on |
+| `pill_id` | The `pill_id` given to `add_pill` |
+
+The pill stays on screen after a tap. Call `remove_pill` from your automation
+if you want it dismissed.
+
+Taps are rate-limited to one every 500ms per pill, so an accidental double-tap
+fires the automation once.
+
+Pills are tappable in normal mode only. In ambient mode the first tap wakes the
+display; tap the pill again once the display is awake.
+
+Show a pill when the front door is left unlocked:
+
+```yaml
+automation:
+  - alias: Front door unlocked pill
+    trigger:
+      platform: state
+      entity_id: lock.front_door
+      to: unlocked
+    action:
+      service: ha_smart_display.add_pill
+      data:
+        device_id: echo_show_kitchen
+        pill_id: front_door
+        text: "Front door unlocked"
+        icon: lock
+        color: "#C62828"
+```
+
+Lock the door and clear the pill when it's tapped:
+
+```yaml
+automation:
+  - alias: Front door pill tapped
+    trigger:
+      platform: event
+      event_type: ha_smart_display_pill_tap
+      event_data:
+        pill_id: front_door
+    action:
+      - service: lock.lock
+        target:
+          entity_id: lock.front_door
+      - service: ha_smart_display.remove_pill
+        data:
+          device_id: echo_show_kitchen
+          pill_id: front_door
+```
 
 ## Companion app
 

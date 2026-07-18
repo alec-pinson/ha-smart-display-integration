@@ -879,6 +879,14 @@ class DeviceConnection:
                             "index": msg.get("index"),
                         },
                     )
+                elif msg.get("event") == "pill_tap":
+                    self._hass.bus.async_fire(
+                        f"{DOMAIN}_pill_tap",
+                        {
+                            "device_id": self._device_id,
+                            "pill_id": msg.get("pill_id"),
+                        },
+                    )
                 elif msg.get("event") == "media_command":
                     command = msg.get("command")
                     self._hass.bus.async_fire(
