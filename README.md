@@ -4,6 +4,10 @@ A Home Assistant custom integration that turns an Amazon Echo Show 8 (running a 
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
+## Screenshots
+
+_Coming soon._
+
 ## Features
 
 - **Weather** — real-time conditions and hourly/daily forecast
@@ -37,6 +41,10 @@ A Home Assistant custom integration that turns an Amazon Echo Show 8 (running a 
 2. The device will be auto-discovered in **Settings → Integrations**. Accept the pairing prompt and enter the pairing code shown on the device screen.
 3. If auto-discovery doesn't appear, click **+ Add Integration**, search for **HA Smart Display**, and enter the device's IP address manually.
 
+A single display can be paired with several Home Assistant instances and switched
+between them from the device's Device Status dialog. Only the active instance is
+served; the others will show the display as unavailable, which is expected.
+
 ## Configuration
 
 After setup, configure optional features via **Settings → Integrations → HA Smart Display → Configure**:
@@ -55,6 +63,51 @@ After setup, configure optional features via **Settings → Integrations → HA 
 | Frigate URL | Frigate NVR URL (used for stream source resolution) |
 | Beta app updates | Offer pre-release app builds for testing. Off by default. |
 
+### Beta app updates
+
+With this off (the default), the display is offered the latest stable app release.
+With it on, it is offered whichever release was published most recently — including
+pre-releases.
+
+The channel means "newest release wins", not "pre-releases only": once a stable
+release is published on top of a beta, devices on the beta channel follow it and both
+channels converge. Note that pre-releases do not expire — if betas are cut for a
+version that is then abandoned, a beta device stays on that build until a newer
+release appears.
+
+## Entities
+
+Each paired display gets the following entities.
+
+| Entity | Type | Description |
+|---|---|---|
+| Display Mode | select | Switch between clock, weather, cameras and music |
+| Ambient | switch | Dimmed, low-activity night mode |
+| Screen | switch | Turn the display on or off |
+| Brightness | number | 10–255 |
+| Auto Brightness | switch | Follow the ambient light sensor |
+| Volume | number | 0–100 |
+| Do Not Disturb | switch | Suppress notifications and alerts |
+| Alarm | switch | Alarm currently sounding |
+| Siren | switch | Trigger the siren sound |
+| Media Player | media_player | Music Assistant playback control |
+| Assist | assist_satellite | Voice assistant satellite |
+| Wake Word | select | Which wake word to listen for |
+| Wake Word Sensitivity | select | Detection threshold |
+| Wake Word Sound | switch | Play a sound on wake word detection |
+| Finished Speaking Detection | select | End-of-speech sensitivity |
+| Mute Microphone | switch | Disable the microphone |
+| Wake for Voice | button | Start a voice interaction remotely |
+| Restart | button | Restart the app |
+| Next Photo / Previous Photo | button | Advance the slideshow |
+| Check for Updates | button | Poll GitHub for a new app release now |
+| App | update | Install app updates over the air |
+| Uptime | sensor | App uptime |
+| Wake Word Count | sensor | Detections since start |
+| Illuminance | sensor | Ambient light level |
+| Memory Usage | sensor | Disabled by default (diagnostic) |
+| Thread Count | sensor | Disabled by default (diagnostic) |
+
 ## Services
 
 | Service | Description |
@@ -70,6 +123,39 @@ After setup, configure optional features via **Settings → Integrations → HA 
 | `ha_smart_display.add_pill` | Add or update a status pill on the display |
 | `ha_smart_display.remove_pill` | Remove a pill by id |
 | `ha_smart_display.dismiss_all_pills` | Remove all pills from the display |
+
+## Pills
+
+Pills are small status chips shown on the clock screen. They are created and removed
+entirely from automations, persist across app restarts, and every pill is tappable.
+
+### `add_pill` parameters
+
+| Parameter | Required | Description |
+|---|---|---|
+| `device_id` | yes | Target display |
+| `pill_id` | yes | Your identifier, used to update or remove the pill later |
+| `text` | yes | Pill label |
+| `icon` | no | See icon list below |
+| `color` | no | Hex colour, e.g. `"#C62828"` |
+| `size` | no | `small`, `medium` (default), or `large` |
+| `position` | no | `under_clock` (default), `top_left`, `top_center`, `top_right`, `center_left`, `center`, `center_right`, `bottom_left`, `bottom_center`, `bottom_right` |
+| `duration` | no | Seconds until the pill removes itself |
+
+Calling `add_pill` with an existing `pill_id` updates that pill in place.
+
+### Icons
+
+`door`, `motion`, `warning`, `info`, `check`, `alert`, `camera`, `lock`,
+`temperature`, `person`, `trash`
+
+### Sizes
+
+| Size | Padding (H×V) | Icon | Font |
+|---|---|---|---|
+| `small` | 8×4 | 12 | 11 |
+| `medium` | 12×6 | 16 | 14 |
+| `large` | 16×8 | 20 | 17 |
 
 ## Events
 
@@ -134,3 +220,14 @@ automation:
 ## Companion app
 
 The device-side Flutter app is available at [ha-smart-display-app](https://github.com/alec-pinson/ha-smart-display-app).
+
+## Sponsor
+
+If you find this project useful, you can support its development:
+
+- [Ko-fi](https://ko-fi.com/alecpinson)
+- [PayPal](https://paypal.me/alecpinson1)
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
