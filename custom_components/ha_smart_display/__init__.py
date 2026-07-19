@@ -449,7 +449,7 @@ def _register_services(hass: HomeAssistant) -> None:
     )
 
     _pill_positions = ["under_clock", "top_left", "top_center", "top_right", "center_left", "center", "center_right", "bottom_left", "bottom_center", "bottom_right"]
-    _pill_icons = ["door", "motion", "warning", "info", "check", "alert", "camera", "lock", "temperature", "person"]
+    _pill_icons = ["door", "motion", "warning", "info", "check", "alert", "camera", "lock", "temperature", "person", "trash"]
     _device_id_schema = vol.Schema({vol.Required("device_id"): cv.string})
 
     def _cancel_pill_timer(device_id: str, pill_id: str) -> None:

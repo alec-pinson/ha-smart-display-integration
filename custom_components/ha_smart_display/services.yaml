@@ -344,6 +344,8 @@ add_pill:
               value: temperature
             - label: Person
               value: person
+            - label: Trash
+              value: trash
     color:
       name: Background Color
       description: "Optional background colour as a hex string (e.g. #FF5733). Leave blank for default semi-transparent white."
