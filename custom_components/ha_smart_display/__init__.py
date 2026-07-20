@@ -37,6 +37,7 @@ from .const import (
     CONF_GO2RTC_URL,
     CONF_BETA_UPDATES,
     IMMICH_RECENT_PHOTOS_ID,
+    WS_MAX_MESSAGE_SIZE,
     STREAM_TYPE_SNAPSHOT,
     STREAM_TYPE_VIDEO,
     STREAM_TYPE_VIDEO_AUDIO,
@@ -664,7 +665,9 @@ class DeviceConnection:
             try:
                 uri = f"ws://{self._host}:{self._port}"
                 _LOGGER.info("ha_smart_display: connecting to %s", uri)
-                async with websockets.connect(uri, open_timeout=10) as ws:
+                async with websockets.connect(
+                    uri, open_timeout=10, max_size=WS_MAX_MESSAGE_SIZE
+                ) as ws:
                     self._ws = ws
                     self._reconnect_delay = 5
                     # Identify this HA instance so the display can route/park us.
