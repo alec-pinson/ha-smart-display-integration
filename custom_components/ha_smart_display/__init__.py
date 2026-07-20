@@ -73,7 +73,7 @@ def build_hello(instance_id: str, name: str, host: str | None = None) -> dict:
     return msg
 
 
-PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite", "update"]
+PLATFORMS = ["select", "switch", "number", "button", "sensor", "media_player", "assist_satellite", "update", "camera"]
 
 
 class ImmichProvider:
