@@ -634,9 +634,7 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_TAKE_SCREENSHOT, handle_take_screenshot,
-        schema=vol.Schema({
-            vol.Required("device_id"): cv.string,
-        }),
+        schema=_device_id_schema,
     )
 
 
