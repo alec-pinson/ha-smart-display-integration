@@ -62,6 +62,10 @@ SERVICE_GET_TIMERS = "get_timers"
 SERVICE_DISMISS_ALL_TIMERS = "dismiss_all_timers"
 SERVICE_GET_ALARMS = "get_alarms"
 SERVICE_DISMISS_ALL_ALARMS = "dismiss_all_alarms"
+SERVICE_TAKE_SCREENSHOT = "take_screenshot"
+
+# How long take_screenshot waits for the device to reply before giving up.
+SCREENSHOT_TIMEOUT = 15
 
 # Camera stream types
 STREAM_TYPE_SNAPSHOT = "snapshot"

@@ -9,6 +9,7 @@ import websockets
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -60,6 +61,8 @@ from .const import (
     SERVICE_GET_ALARMS,
     SERVICE_DISMISS_ALL_ALARMS,
     SERVICE_CLOSE_CAMERA,
+    SERVICE_TAKE_SCREENSHOT,
+    SCREENSHOT_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -560,6 +563,31 @@ def _register_services(hass: HomeAssistant) -> None:
         if conn:
             await conn.send_command({"alarms": []})
 
+    async def handle_take_screenshot(call: ServiceCall) -> None:
+        device_id = resolve_device_id(hass, call.data["device_id"])
+        if not device_id:
+            raise HomeAssistantError("Unknown display device")
+        conn = get_connection(hass, device_id)
+        if not conn:
+            raise HomeAssistantError(f"Display {device_id} is not connected")
+
+        slot = hass.data[DOMAIN][device_id]
+        waiter = asyncio.Event()
+        slot["screenshot_event"] = waiter
+        try:
+            await conn.send_command({"action": "screenshot"})
+            try:
+                await asyncio.wait_for(waiter.wait(), timeout=SCREENSHOT_TIMEOUT)
+            except asyncio.TimeoutError:
+                raise HomeAssistantError(
+                    f"Timed out waiting for a screenshot from {device_id}"
+                )
+        finally:
+            # Clear only if still ours, so a late reply to this call cannot
+            # satisfy a subsequent one.
+            if slot.get("screenshot_event") is waiter:
+                slot["screenshot_event"] = None
+
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_PILL, handle_add_pill,
         schema=vol.Schema({
@@ -603,6 +631,12 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_DISMISS_ALL_ALARMS, handle_dismiss_all_alarms,
         schema=_device_id_schema,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_TAKE_SCREENSHOT, handle_take_screenshot,
+        schema=vol.Schema({
+            vol.Required("device_id"): cv.string,
+        }),
     )
 
 

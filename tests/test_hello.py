@@ -18,6 +18,8 @@ _ha_core.ServiceCall = MagicMock
 _ha_core.ServiceResponse = MagicMock
 _ha_core.SupportsResponse = MagicMock
 _ha_core.callback = lambda f: f
+_ha_exceptions = _make_module("homeassistant.exceptions")
+_ha_exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
 _make_module("homeassistant.helpers")
 _ha_aiohttp = _make_module("homeassistant.helpers.aiohttp_client")
 _ha_aiohttp.async_get_clientsession = MagicMock()

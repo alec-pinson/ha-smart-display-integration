@@ -496,3 +496,18 @@ dismiss_all_alarms:
       selector:
         device:
           integration: ha_smart_display
+
+take_screenshot:
+  name: Take Screenshot
+  description: >-
+    Capture the display's screen and store it on the display's camera entity.
+    Waits until the image has arrived, so a following camera.snapshot will save
+    the new capture rather than the previous one.
+  fields:
+    device_id:
+      name: Display
+      description: The HA Smart Display to capture.
+      required: true
+      selector:
+        device:
+          integration: ha_smart_display
