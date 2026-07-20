@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import websockets
 
@@ -212,6 +212,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "satellite_entity": None,
         "app_version": None,
         "updater": None,
+        "screenshot": None,          # bytes of the most recent capture
+        "screenshot_at": None,       # datetime the capture arrived
+        "screenshot_event": None,    # asyncio.Event awaited by take_screenshot
     }
 
     connection = DeviceConnection(hass, entry, device_id, host, port, weather_entity, camera_entities, climate_entity, temperature_sensor, humidity_sensor, auto_ambient_lux, ma_media_player, immich_url, immich_api_key, immich_album_ids, immich_refresh_interval, immich_batch_size, slideshow_interval, frigate_url, go2rtc_url)
@@ -890,6 +893,41 @@ class DeviceConnection:
                             "pill_id": msg.get("pill_id"),
                         },
                     )
+                elif msg.get("event") == "screenshot":
+                    slot = self._hass.data[DOMAIN][self._device_id]
+                    error = msg.get("error")
+                    if error:
+                        _LOGGER.warning(
+                            "ha_smart_display: screenshot failed on device %s: %s",
+                            self._device_id, error,
+                        )
+                    else:
+                        data = msg.get("data")
+                        try:
+                            image = base64.b64decode(data or "", validate=True)
+                        except Exception as e:
+                            _LOGGER.warning(
+                                "ha_smart_display: could not decode screenshot from %s: %s",
+                                self._device_id, e,
+                            )
+                        else:
+                            # Only replace on success — a failed capture keeps
+                            # the previous image rather than blanking the card.
+                            slot["screenshot"] = image
+                            slot["screenshot_at"] = datetime.now(timezone.utc)
+                            # Re-send the current state, not an empty dict:
+                            # subscribers such as media_player read the payload
+                            # unconditionally, so {} would blank their state.
+                            async_dispatcher_send(
+                                self._hass,
+                                SIGNAL_STATE_UPDATED.format(device_id=self._device_id),
+                                slot.get("state", {}),
+                            )
+                    # Release the waiter on success *and* failure, so a failed
+                    # capture surfaces immediately instead of hitting the timeout.
+                    waiter = slot.get("screenshot_event")
+                    if waiter is not None:
+                        waiter.set()
                 elif msg.get("event") == "media_command":
                     command = msg.get("command")
                     self._hass.bus.async_fire(
