@@ -17,6 +17,7 @@ async def async_setup_entry(
         PreviousPhotoButton(hass, entry),
         WakeForVoiceButton(hass, entry),
         CheckForUpdatesButton(hass, entry),
+        TakeScreenshotButton(hass, entry),
     ])
 
 
@@ -100,3 +101,21 @@ class CheckForUpdatesButton(HaSmartDisplayEntity, ButtonEntity):
                 SIGNAL_STATE_UPDATED.format(device_id=self._device_id),
                 {},
             )
+
+
+class TakeScreenshotButton(HaSmartDisplayEntity, ButtonEntity):
+    _attr_name = "Take Screenshot"
+    _attr_icon = "mdi:monitor-screenshot"
+
+    @property
+    def entity_description_key(self):
+        return "take_screenshot"
+
+    def _handle_state_update(self, payload):
+        pass
+
+    async def async_press(self):
+        # Fire-and-forget. The image arrives later as a screenshot event and
+        # lands on the camera entity. Use the take_screenshot service instead
+        # if you need to wait for the capture (e.g. before camera.snapshot).
+        self._send_command({"action": "screenshot"})
