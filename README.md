@@ -101,7 +101,7 @@ Each paired display gets the following entities.
 | Restart | button | Restart the app |
 | Next Photo / Previous Photo | button | Advance the slideshow |
 | Check for Updates | button | Poll GitHub for a new app release now |
-| Screenshot | camera | The most recent screenshot captured from the display. Updated only when a capture is triggered; the `last_captured` attribute shows its age. |
+| Screen | camera | The most recent screenshot captured from the display. Updated only when a capture is triggered; the `last_captured` attribute shows its age. |
 | Take Screenshot | button | Capture the display's screen. Fire-and-forget — the image lands on the camera entity a moment later. |
 | App | update | Install app updates over the air |
 | Uptime | sensor | App uptime |
