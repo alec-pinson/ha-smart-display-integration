@@ -25,6 +25,11 @@ IMMICH_RECENT_PHOTOS_ID = "__recent__"
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30
 
+# WebSocket receive limit. The library default is 1 MiB, which a full-resolution
+# PNG screenshot of a photo-heavy ambient screen exceeds — and exceeding it
+# closes the connection rather than just dropping the message.
+WS_MAX_MESSAGE_SIZE = 16 * 1024 * 1024
+
 WAKE_WORD_OPTIONS = ["alexa", "hey_jarvis", "okay_nabu", "hey_mycroft"]
 WAKE_WORD_SENSITIVITY_OPTIONS = ["low", "medium", "high"]
 VAD_SENSITIVITY_OPTIONS = ["default", "relaxed", "aggressive"]
@@ -57,6 +62,10 @@ SERVICE_GET_TIMERS = "get_timers"
 SERVICE_DISMISS_ALL_TIMERS = "dismiss_all_timers"
 SERVICE_GET_ALARMS = "get_alarms"
 SERVICE_DISMISS_ALL_ALARMS = "dismiss_all_alarms"
+SERVICE_TAKE_SCREENSHOT = "take_screenshot"
+
+# How long take_screenshot waits for the device to reply before giving up.
+SCREENSHOT_TIMEOUT = 15
 
 # Camera stream types
 STREAM_TYPE_SNAPSHOT = "snapshot"

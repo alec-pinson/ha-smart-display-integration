@@ -101,6 +101,8 @@ Each paired display gets the following entities.
 | Restart | button | Restart the app |
 | Next Photo / Previous Photo | button | Advance the slideshow |
 | Check for Updates | button | Poll GitHub for a new app release now |
+| Screen | camera | The most recent screenshot captured from the display. Updated only when a capture is triggered; the `last_captured` attribute shows its age. |
+| Take Screenshot | button | Capture the display's screen. Fire-and-forget — the image lands on the camera entity a moment later. |
 | App | update | Install app updates over the air |
 | Uptime | sensor | App uptime |
 | Wake Word Count | sensor | Detections since start |
@@ -123,6 +125,35 @@ Each paired display gets the following entities.
 | `ha_smart_display.add_pill` | Add or update a status pill on the display |
 | `ha_smart_display.remove_pill` | Remove a pill by id |
 | `ha_smart_display.dismiss_all_pills` | Remove all pills from the display |
+| `ha_smart_display.take_screenshot` | Capture the display's screen and wait for it to land on the camera entity |
+
+### `ha_smart_display.take_screenshot`
+
+Capture the display's screen and store it on the camera entity. Unlike the
+Take Screenshot button, this service **waits** until the image has arrived, so
+a following `camera.snapshot` saves the new capture rather than the previous
+one.
+
+| Parameter | Required | Description |
+|---|---|---|
+| `device_id` | yes | The display to capture |
+
+Saving a screenshot to disk:
+
+```yaml
+sequence:
+  - service: ha_smart_display.take_screenshot
+    data:
+      device_id: echo_show_kitchen
+  - service: camera.snapshot
+    target:
+      entity_id: camera.echo_show_kitchen_screen
+    data:
+      filename: /config/www/display.png
+```
+
+Screenshots are held in memory only — nothing is written to the device's
+storage, and only the most recent capture is kept.
 
 ## Pills
 

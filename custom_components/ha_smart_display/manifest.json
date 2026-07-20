@@ -1,7 +1,7 @@
 {
   "domain": "ha_smart_display",
   "name": "HA Smart Display",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "documentation": "",
   "requirements": [],
   "dependencies": ["assist_satellite"],

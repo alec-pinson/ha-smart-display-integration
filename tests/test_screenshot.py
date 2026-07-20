@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -49,6 +50,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from custom_components.ha_smart_display import DeviceConnection
 from custom_components.ha_smart_display.const import DOMAIN
 
+DEVICE_ID = "echo_show_kitchen"
+PNG = b"\x89PNG\r\n\x1a\n fake image bytes"
+
 
 class FakeWebSocket:
     """Async-iterable stand-in for a websockets connection."""
@@ -67,49 +71,109 @@ def _make_connection():
     """Build a DeviceConnection without running its heavy __init__."""
     conn = object.__new__(DeviceConnection)
     conn._hass = MagicMock()
-    conn._device_id = "echo_show_kitchen"
+    conn._device_id = DEVICE_ID
+    # MagicMock does not support subscripting, so give hass.data a real dict.
+    conn._hass.data = {DOMAIN: {DEVICE_ID: {}}}
     return conn
 
 
-def test_pill_tap_fires_bus_event():
+def _slot(conn):
+    return conn._hass.data[DOMAIN][DEVICE_ID]
+
+
+def test_screenshot_is_stored_with_timestamp():
     conn = _make_connection()
     ws = FakeWebSocket([json.dumps({
         "type": "event",
-        "event": "pill_tap",
-        "pill_id": "front_door",
+        "event": "screenshot",
+        "data": base64.b64encode(PNG).decode(),
     })])
 
     asyncio.run(conn._listen(ws))
 
-    conn._hass.bus.async_fire.assert_called_once_with(
-        f"{DOMAIN}_pill_tap",
-        {"device_id": "echo_show_kitchen", "pill_id": "front_door"},
-    )
+    assert _slot(conn)["screenshot"] == PNG
+    assert _slot(conn)["screenshot_at"] is not None
 
 
-def test_pill_tap_without_pill_id_fires_with_none():
+def test_screenshot_error_keeps_previous_image():
     conn = _make_connection()
+    _slot(conn)["screenshot"] = PNG
     ws = FakeWebSocket([json.dumps({
         "type": "event",
-        "event": "pill_tap",
+        "event": "screenshot",
+        "error": "Capture failed: no image produced",
     })])
 
     asyncio.run(conn._listen(ws))
 
-    conn._hass.bus.async_fire.assert_called_once_with(
-        f"{DOMAIN}_pill_tap",
-        {"device_id": "echo_show_kitchen", "pill_id": None},
-    )
+    assert _slot(conn)["screenshot"] == PNG
 
 
-def test_unknown_event_does_not_fire_pill_tap():
+def test_undecodable_screenshot_keeps_previous_image():
     conn = _make_connection()
+    _slot(conn)["screenshot"] = PNG
     ws = FakeWebSocket([json.dumps({
         "type": "event",
-        "event": "something_else",
+        "event": "screenshot",
+        "data": "!!!not base64!!!",
     })])
 
     asyncio.run(conn._listen(ws))
 
-    for call in conn._hass.bus.async_fire.call_args_list:
-        assert call.args[0] != f"{DOMAIN}_pill_tap"
+    assert _slot(conn)["screenshot"] == PNG
+
+
+def test_screenshot_sets_waiting_event():
+    conn = _make_connection()
+
+    async def run():
+        waiter = asyncio.Event()
+        _slot(conn)["screenshot_event"] = waiter
+        ws = FakeWebSocket([json.dumps({
+            "type": "event",
+            "event": "screenshot",
+            "data": base64.b64encode(PNG).decode(),
+        })])
+        await conn._listen(ws)
+        return waiter.is_set()
+
+    assert asyncio.run(run()) is True
+
+
+def test_screenshot_dispatch_does_not_blank_device_state():
+    """Subscribers (e.g. media_player) read the payload unconditionally, so
+    dispatching an empty dict would wipe their state on every capture."""
+    from custom_components import ha_smart_display
+
+    conn = _make_connection()
+    state = {"media_state": "playing", "media_track": {"title": "Song"}}
+    _slot(conn)["state"] = state
+    ws = FakeWebSocket([json.dumps({
+        "type": "event",
+        "event": "screenshot",
+        "data": base64.b64encode(PNG).decode(),
+    })])
+
+    ha_smart_display.async_dispatcher_send.reset_mock()
+    asyncio.run(conn._listen(ws))
+
+    assert ha_smart_display.async_dispatcher_send.call_count == 1
+    assert ha_smart_display.async_dispatcher_send.call_args.args[2] == state
+
+
+def test_screenshot_error_also_releases_waiter():
+    """A failed capture must not leave the service hanging until timeout."""
+    conn = _make_connection()
+
+    async def run():
+        waiter = asyncio.Event()
+        _slot(conn)["screenshot_event"] = waiter
+        ws = FakeWebSocket([json.dumps({
+            "type": "event",
+            "event": "screenshot",
+            "error": "Capture failed",
+        })])
+        await conn._listen(ws)
+        return waiter.is_set()
+
+    assert asyncio.run(run()) is True
