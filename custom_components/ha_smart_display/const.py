@@ -21,6 +21,8 @@ CONF_FRIGATE_URL = "frigate_url"
 CONF_GO2RTC_URL = "go2rtc_url"
 CONF_BETA_UPDATES = "beta_updates"
 IMMICH_RECENT_PHOTOS_ID = "__recent__"
+# Immich rejects a search `size` above this, failing the whole request.
+IMMICH_MAX_SEARCH_SIZE = 1000
 
 DEFAULT_PORT = 8472
 PAIRING_TIMEOUT = 30

@@ -38,6 +38,7 @@ from .const import (
     CONF_GO2RTC_URL,
     CONF_BETA_UPDATES,
     IMMICH_RECENT_PHOTOS_ID,
+    IMMICH_MAX_SEARCH_SIZE,
     WS_MAX_MESSAGE_SIZE,
     STREAM_TYPE_SNAPSHOT,
     STREAM_TYPE_VIDEO,
@@ -114,54 +115,87 @@ class ImmichProvider:
                 pass
         return location, date_display
 
+    async def _fetch_album_name(self, session, album_id: str) -> str | None:
+        """Album name, used for the caption. Cosmetic — a failure here must not
+        cost us the album's photos, so it returns None rather than raising."""
+        import aiohttp
+        try:
+            async with session.get(
+                f"{self._url}/api/albums/{album_id}",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("albumName") or data.get("name") or None
+                _LOGGER.debug(
+                    "ha_smart_display: Immich album %s name lookup returned HTTP %s",
+                    album_id, resp.status,
+                )
+        except Exception as e:
+            _LOGGER.debug("ha_smart_display: Immich album %s name lookup failed: %s", album_id, e)
+        return None
+
+    async def _search_random(self, session, album_id: str | None) -> list[dict]:
+        """A random batch of images, scoped to one album when given.
+
+        Immich v3.0.0 removed the `assets` property from the album response, so
+        album contents have to come from search. `/search/random` rather than the
+        migration guide's `/search/metadata` because it shuffles server-side —
+        metadata search is ordered and paginated, so the slideshow would only
+        ever cycle the newest photos instead of the whole album.
+        """
+        import aiohttp
+        body = {
+            "type": "IMAGE",
+            # EXIF drives the location/date caption.
+            "withExif": True,
+            # v3 matches any visibility when this is omitted, which would pull
+            # archived and hidden photos into the slideshow.
+            "visibility": "timeline",
+            "size": max(1, min(self._batch_size, IMMICH_MAX_SEARCH_SIZE)),
+        }
+        if album_id:
+            body["albumIds"] = [album_id]
+        async with session.post(
+            f"{self._url}/api/search/random",
+            json=body,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status != 200:
+                raise Exception(f"HTTP {resp.status}")
+            data = await resp.json()
+        return data if isinstance(data, list) else []
+
     async def fetch_photos(self) -> list[dict]:
         """Return a shuffled batch of photo dicts (url, album, location, date) from the configured albums."""
         import aiohttp
         assets: list[dict] = []  # {id, album, location, date}
         try:
             async with aiohttp.ClientSession(headers={"x-api-key": self._api_key}) as session:
-                if IMMICH_RECENT_PHOTOS_ID in self._album_ids:
-                    try:
-                        async with session.get(
-                            f"{self._url}/api/assets",
-                            params={"size": self._batch_size, "page": 1},
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as resp:
-                            if resp.status == 200:
-                                data = await resp.json()
-                                for asset in (data if isinstance(data, list) else data.get("assets", [])):
-                                    if asset.get("type") == "IMAGE":
-                                        location, date_display = self._parse_asset_meta(asset)
-                                        assets.append({
-                                            "id": asset["id"],
-                                            "album": None,
-                                            "location": location,
-                                            "date": date_display,
-                                        })
-                    except Exception as e:
-                        _LOGGER.debug("ha_smart_display: Immich recent photos fetch failed: %s", e)
                 for album_id in self._album_ids:
-                    if album_id == IMMICH_RECENT_PHOTOS_ID:
-                        continue
+                    is_recent = album_id == IMMICH_RECENT_PHOTOS_ID
+                    album_name = None if is_recent else await self._fetch_album_name(session, album_id)
                     try:
-                        async with session.get(
-                            f"{self._url}/api/albums/{album_id}",
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as resp:
-                            if resp.status == 200:
-                                data = await resp.json()
-                                album_name = data.get("albumName") or data.get("name") or ""
-                                for asset in data.get("assets", []):
-                                    if asset.get("type") == "IMAGE":
-                                        location, date_display = self._parse_asset_meta(asset, album_name)
-                                        assets.append({
-                                            "id": asset["id"],
-                                            "album": album_name or None,
-                                            "location": location,
-                                            "date": date_display,
-                                        })
+                        found = await self._search_random(session, None if is_recent else album_id)
                     except Exception as e:
-                        _LOGGER.debug("ha_smart_display: Immich album %s fetch failed: %s", album_id, e)
+                        _LOGGER.warning(
+                            "ha_smart_display: Immich search for album %s failed: %s", album_id, e,
+                        )
+                        continue
+                    if not found:
+                        _LOGGER.warning(
+                            "ha_smart_display: Immich album %s returned no photos", album_id,
+                        )
+                    for asset in found:
+                        if asset.get("type") != "IMAGE":
+                            continue
+                        location, date_display = self._parse_asset_meta(asset, album_name)
+                        assets.append({
+                            "id": asset["id"],
+                            "album": album_name,
+                            "location": location,
+                            "date": date_display,
+                        })
         except Exception as e:
             _LOGGER.warning("ha_smart_display: Immich fetch_photos failed: %s", e)
             return []
