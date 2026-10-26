@@ -1521,7 +1521,13 @@ def resolve_device_id(hass: HomeAssistant, ha_device_id: str) -> str | None:
     device = dev_reg.async_get(ha_device_id)
     if not device:
         return None
-    entry = hass.config_entries.async_get_entry(device.config_entry_id)
-    if entry and entry.domain == DOMAIN:
-        return entry.data.get(CONF_DEVICE_ID)
+    # Newer HA deprecates config_entries; older releases lack config_entry_id
+    if hasattr(device, "config_entry_id"):
+        entry_ids = [device.config_entry_id]
+    else:
+        entry_ids = device.config_entries
+    for entry_id in entry_ids:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry and entry.domain == DOMAIN:
+            return entry.data.get(CONF_DEVICE_ID)
     return None
