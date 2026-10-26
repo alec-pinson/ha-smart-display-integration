@@ -72,10 +72,11 @@ class GitHubUpdater:
     async def async_start(self) -> None:
         await self.async_check()
         self._unsub = async_track_time_interval(
-            self._hass,
-            lambda _: self._hass.async_create_task(self.async_check()),
-            UPDATE_CHECK_INTERVAL,
+            self._hass, self._async_scheduled_check, UPDATE_CHECK_INTERVAL
         )
+
+    async def _async_scheduled_check(self, _now: datetime) -> None:
+        await self.async_check()
 
     def stop(self) -> None:
         if self._unsub:
