@@ -812,8 +812,9 @@ class DeviceConnection:
 
                     # Start camera snapshot loop
                     if self._camera_entities:
-                        self._camera_task = self._hass.async_create_task(
-                            self._camera_loop()
+                        self._camera_task = self._hass.async_create_background_task(
+                            self._camera_loop(),
+                            f"{DOMAIN}_camera_loop_{self._device_id}",
                         )
 
                     # Send stream config so the app knows what mode to use on tap
@@ -913,8 +914,9 @@ class DeviceConnection:
                             self._fast_camera_task.cancel()
                             self._fast_camera_task = None
                         if focused and focused in self._camera_entities and self._focused_camera_stream_type == STREAM_TYPE_SNAPSHOT:
-                            self._fast_camera_task = self._hass.async_create_task(
-                                self._focused_camera_loop(focused)
+                            self._fast_camera_task = self._hass.async_create_background_task(
+                                self._focused_camera_loop(focused),
+                                f"{DOMAIN}_focused_camera_loop_{self._device_id}",
                             )
 
                 # When user navigates to cameras page, push snapshots immediately
@@ -1519,7 +1521,12 @@ def resolve_device_id(hass: HomeAssistant, ha_device_id: str) -> str | None:
     device = dev_reg.async_get(ha_device_id)
     if not device:
         return None
-    for entry_id in device.config_entries:
+    # Newer HA deprecates config_entries; older releases lack config_entry_id
+    if hasattr(device, "config_entry_id"):
+        entry_ids = [device.config_entry_id]
+    else:
+        entry_ids = device.config_entries
+    for entry_id in entry_ids:
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry and entry.domain == DOMAIN:
             return entry.data.get(CONF_DEVICE_ID)
